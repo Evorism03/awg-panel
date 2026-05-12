@@ -199,7 +199,6 @@ def login(body: LoginRequest, response: Response):
         httponly=True,
         samesite="strict",
         secure=False,
-        max_age=60 * 60 * 24 * 7,
     )
     return {"ok": True}
 
@@ -271,7 +270,15 @@ def delete_client(public_key: str, authorization: str | None = Header(None), awg
 @app.post("/api/qrcode")
 def qr(payload: dict, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
     auth(authorization, awg_panel_session)
-    img = qrcode.make(payload.get("config", ""))
+    qr_code = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=12,
+        border=6,
+    )
+    qr_code.add_data(payload.get("config", ""))
+    qr_code.make(fit=True)
+    img = qr_code.make_image(fill_color="black", back_color="white")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return Response(content=buf.getvalue(), media_type="image/png")
