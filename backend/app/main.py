@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Header, Response
+from fastapi import Cookie, FastAPI, HTTPException, Header, Response
 from pydantic import BaseModel
 import base64, io, ipaddress, os, re, secrets, shutil, subprocess, time
 import qrcode
@@ -9,9 +9,14 @@ app = FastAPI(title="AmneziaWG Admin")
 class ClientCreate(BaseModel):
     name: str
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
-def auth(authorization: str | None):
-    if authorization != f"Bearer {ADMIN_TOKEN}":
+def auth(authorization: str | None, awg_panel_session: str | None):
+    bearer_ok = authorization == f"Bearer {ADMIN_TOKEN}"
+    cookie_ok = awg_panel_session == ADMIN_TOKEN
+    if not bearer_ok and not cookie_ok:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -36,12 +41,29 @@ def awg(args: list[str], input_text: str | None = None) -> str:
             return mock_key()
         if args[:2] == ["show", AWG_INTERFACE]:
             return "mock\tlatest-handshake\ttransfer-rx\ttransfer-tx"
+    cmd = [AWG_BIN, *args]
+    if AWG_DOCKER_CONTAINER:
+        cmd = ["docker", "exec", "-i", AWG_DOCKER_CONTAINER, AWG_BIN, *args]
     try:
-        return subprocess.check_output([AWG_BIN, *args], input=input_text, stderr=subprocess.STDOUT, text=True).strip()
+        return subprocess.check_output(cmd, input=input_text, stderr=subprocess.STDOUT, text=True).strip()
     except subprocess.CalledProcessError as e:
         raise HTTPException(status_code=500, detail=e.output.strip() or str(e))
     except FileNotFoundError:
-        raise HTTPException(status_code=500, detail=f"Command not found: {AWG_BIN}")
+        raise HTTPException(status_code=500, detail=f"Command not found: {cmd[0]}")
+
+
+def docker_exec(args: list[str], input_text: str | None = None) -> str:
+    try:
+        return subprocess.check_output(
+            ["docker", "exec", "-i", AWG_DOCKER_CONTAINER, *args],
+            input=input_text,
+            stderr=subprocess.STDOUT,
+            text=True,
+        ).strip()
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=e.output.strip() or str(e))
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Command not found: docker")
 
 
 def ensure_mock_cfg():
@@ -67,12 +89,19 @@ H4 = 4
 
 def read_cfg() -> str:
     ensure_mock_cfg()
+    if AWG_DOCKER_CONTAINER:
+        return docker_exec(["cat", AWG_CONTAINER_CONFIG_PATH])
     with open(AWG_CONFIG_PATH, "r", encoding="utf-8") as f:
         return f.read()
 
 
 def write_cfg(text: str):
     backup = f"{AWG_CONFIG_PATH}.bak.{int(time.time())}"
+    if AWG_DOCKER_CONTAINER:
+        container_backup = f"{AWG_CONTAINER_CONFIG_PATH}.bak.{int(time.time())}"
+        docker_exec(["cp", AWG_CONTAINER_CONFIG_PATH, container_backup])
+        docker_exec(["sh", "-c", f"cat > {AWG_CONTAINER_CONFIG_PATH}"], text.rstrip() + "\n")
+        return
     shutil.copy2(AWG_CONFIG_PATH, backup)
     with open(AWG_CONFIG_PATH, "w", encoding="utf-8") as f:
         f.write(text.rstrip() + "\n")
@@ -127,7 +156,7 @@ def next_ip(interface_address: str, peers: list[dict]) -> str:
 
 def client_config(private_key: str, address: str, server_public: str, peer: dict, interface: dict) -> str:
     awg_extra = []
-    for key in ["Jc", "Jmin", "Jmax", "S1", "S2", "H1", "H2", "H3", "H4"]:
+    for key in ["Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4", "H1", "H2", "H3", "H4"]:
         if key in interface:
             awg_extra.append(f"{key} = {interface[key]}")
     extra = "\n".join(awg_extra)
@@ -157,9 +186,31 @@ def reload_service():
 def health():
     return {"ok": True, "interface": AWG_INTERFACE, "mock": MOCK_AWG}
 
+@app.post("/api/login")
+def login(body: LoginRequest, response: Response):
+    password = ADMIN_PASSWORD or ADMIN_TOKEN
+    user_ok = secrets.compare_digest(body.username, ADMIN_USERNAME)
+    password_ok = secrets.compare_digest(body.password, password)
+    if not user_ok or not password_ok:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    response.set_cookie(
+        "awg_panel_session",
+        ADMIN_TOKEN,
+        httponly=True,
+        samesite="strict",
+        secure=False,
+        max_age=60 * 60 * 24 * 7,
+    )
+    return {"ok": True}
+
+@app.post("/api/logout")
+def logout(response: Response):
+    response.delete_cookie("awg_panel_session")
+    return {"ok": True}
+
 @app.get("/api/clients")
-def clients(authorization: str | None = Header(None)):
-    auth(authorization)
+def clients(authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+    auth(authorization, awg_panel_session)
     peers = parse_peers(read_cfg())
     dump = ""
     try:
@@ -169,8 +220,8 @@ def clients(authorization: str | None = Header(None)):
     return {"clients": peers, "dump": dump}
 
 @app.post("/api/clients")
-def create_client(body: ClientCreate, authorization: str | None = Header(None)):
-    auth(authorization)
+def create_client(body: ClientCreate, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+    auth(authorization, awg_panel_session)
     name = body.name.strip()
     if not name:
         raise HTTPException(400, "Client name is required")
@@ -200,8 +251,8 @@ AllowedIPs = {ip}/32
     return {"name": name, "publicKey": public_key, "address": f"{ip}/32", "config": cfg}
 
 @app.delete("/api/clients/{public_key}")
-def delete_client(public_key: str, authorization: str | None = Header(None)):
-    auth(authorization)
+def delete_client(public_key: str, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+    auth(authorization, awg_panel_session)
     text = read_cfg()
     chunks = re.split(r"\n(?=\[Peer\])", text)
     kept = []
@@ -218,8 +269,8 @@ def delete_client(public_key: str, authorization: str | None = Header(None)):
     return {"ok": True}
 
 @app.post("/api/qrcode")
-def qr(payload: dict, authorization: str | None = Header(None)):
-    auth(authorization)
+def qr(payload: dict, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+    auth(authorization, awg_panel_session)
     img = qrcode.make(payload.get("config", ""))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
