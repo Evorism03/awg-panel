@@ -1,0 +1,18 @@
+services:
+  backend:
+    build: ./backend
+    container_name: awg-admin-backend
+    env_file: .env
+    volumes:
+      - ./data:/data
+    ports:
+      - "8090:8090"
+    restart: unless-stopped
+  frontend:
+    build: ./frontend
+    container_name: awg-admin-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
