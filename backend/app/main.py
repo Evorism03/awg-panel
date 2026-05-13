@@ -352,6 +352,7 @@ def list_servers(include_local: bool = True) -> list[dict]:
 
 def local_clients_payload() -> dict:
     local_name = local_server_identity()["name"]
+    prune_awg_without_client_table()
     expired_clients = attach_client_source(apply_client_table_names(enforce_expired_clients()), LOCAL_SERVER_ID, local_name)
     peers = attach_client_source(apply_client_table_names(parse_peers(read_cfg())), LOCAL_SERVER_ID, local_name)
     for peer in peers:
@@ -375,30 +376,30 @@ def sync_local_clients() -> dict:
     with data_lock:
         enforce_expired_clients()
         text = read_cfg()
-        peers = parse_peers(text)
+        chunks = re.split(r"\n(?=\[Peer\])", text)
+        peers = []
+        kept_chunks = []
         table_data = client_table_load()
         table_entries = client_table_entries(table_data)
         table_to_awg_synced = 0
         table_to_awg_skipped = 0
-        awg_to_table_synced = 0
+        removed_from_awg = 0
 
-        for peer in peers:
+        for chunk in chunks:
+            if not chunk.strip().startswith("[Peer]"):
+                kept_chunks.append(chunk)
+                continue
+            peer = peer_from_block(chunk)
             public_key = peer.get("PublicKey", "").strip()
-            if not public_key:
+            allowed_ips = peer.get("AllowedIPs", "").strip()
+            if public_key and client_table_find_entry(table_entries, public_key, allowed_ips):
+                peers.append(peer)
+                kept_chunks.append(chunk)
                 continue
-            if client_table_find_entry(table_entries, public_key, peer.get("AllowedIPs", "")):
-                continue
-            client_table_upsert(
-                public_key,
-                peer.get("name", "").strip() or public_key,
-                peer.get("AllowedIPs", "").strip(),
-            )
-            awg_to_table_synced += 1
+            removed_from_awg += 1
 
-        table_data = client_table_load()
-        table_entries = client_table_entries(table_data)
         peer_keys = {peer.get("PublicKey", "").strip() for peer in peers if peer.get("PublicKey", "").strip()}
-        next_text = text.rstrip()
+        next_text = "\n".join(kept_chunks).rstrip()
         for entry in table_entries:
             peer = client_table_entry_peer(entry)
             public_key = peer.get("PublicKey", "").strip()
@@ -417,13 +418,38 @@ def sync_local_clients() -> dict:
             reload_service()
 
         payload = local_clients_payload()
-        payload["synced"] = awg_to_table_synced + table_to_awg_synced
+        payload["synced"] = removed_from_awg + table_to_awg_synced
         payload["sync"] = {
-            "awgToClientsTable": awg_to_table_synced,
+            "removedFromAwg": removed_from_awg,
             "clientsTableToAwg": table_to_awg_synced,
             "skippedClientsTableOnly": table_to_awg_skipped,
         }
         return payload
+
+
+def prune_awg_without_client_table() -> int:
+    with data_lock:
+        text = read_cfg()
+        chunks = re.split(r"\n(?=\[Peer\])", text)
+        table_entries = client_table_entries(client_table_load())
+        kept_chunks = []
+        removed = 0
+        for chunk in chunks:
+            if not chunk.strip().startswith("[Peer]"):
+                kept_chunks.append(chunk)
+                continue
+            peer = peer_from_block(chunk)
+            public_key = peer.get("PublicKey", "").strip()
+            allowed_ips = peer.get("AllowedIPs", "").strip()
+            if public_key and client_table_find_entry(table_entries, public_key, allowed_ips):
+                kept_chunks.append(chunk)
+                continue
+            removed += 1
+        if not removed:
+            return 0
+        write_cfg("\n".join(kept_chunks))
+        reload_service()
+        return removed
 
 
 def remote_clients_payload(server: dict) -> dict:
