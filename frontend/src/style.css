@@ -315,6 +315,7 @@ main.public-page{max-width:1280px;padding:24px 24px 36px}
 .server-table .table-actions button{margin-top:0}
 .rotated{transform:rotate(180deg)}
 .card > table{display:block;width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;scrollbar-color:#3d5070 #0a1020;scrollbar-width:thin}
+.card > .orders-table{display:table;width:100%;overflow-x:visible}
 .card > table::-webkit-scrollbar{height:8px}
 .card > table::-webkit-scrollbar-track{background:#0a1020;border-radius:999px}
 .card > table::-webkit-scrollbar-thumb{background:#3d5070;border-radius:999px}
