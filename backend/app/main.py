@@ -573,6 +573,8 @@ CLIENT_TABLE_PUBLIC_KEY_FIELDS = [
     "public_key",
     "clientPublicKey",
     "client_public_key",
+    "clientId",
+    "client_id",
 ]
 CLIENT_TABLE_NAME_FIELDS = [
     "name",
