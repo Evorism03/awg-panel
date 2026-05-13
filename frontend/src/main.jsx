@@ -37,23 +37,23 @@ const dict = {
     purchaseOrderSub:'Заказ сразу уходит в общий список активных заявок.',
     purchaseAction:'Оформить активный заказ',
     adminPanel:'Админ-панель',
-    today:'Сегодня', admin:'Админ', oneDay:'1 день', threeDays:'3 дня', sevenDays:'7 дней', fifteenDays:'15 дней', oneMonth:'1 месяц', threeMonths:'3 месяца', sixMonths:'6 месяцев', oneYear:'1 год',
+    today:'Сегодня', admin:'Админ', forever:'Бессрочно', oneDay:'1 день', threeDays:'3 дня', sevenDays:'7 дней', fifteenDays:'15 дней', oneMonth:'1 месяц', threeMonths:'3 месяца', sixMonths:'6 месяцев', oneYear:'1 год',
     online:'Онлайн', offline:'Оффлайн', recent:'Недавно', renewalPending:'Ожидает продления', checking:'Проверка сессии', signInTitle:'Вход в панель управления', login:'Логин', password:'Пароль', signIn:'Войти',
     noServer:'Сервер не выбран', noEndpoint:'endpoint не задан', refresh:'Обновить', refreshing:'Обновление', logout:'Выйти', home:'Главная', clients:'Клиенты', expired:'Просроченные', orders:'Заказы', servers:'Серверы', localServer:'Локальный сервер', allServers:'Все серверы', editName:'Редактировать имя', save:'Сохранить', cancel:'Отмена',
     totalClients:'Всего клиентов', activeClients:'Активные клиенты', expiredClients:'Просроченные клиенты', serversActive:'Серверы / активные', activeUsers:'Активные пользователи', maxOnline:'Максимум онлайн-клиентов по дням', now:'Сейчас',
     traffic:'Трафик', rx:'Прием данных', tx:'Отдача данных', peersDump:'Peers в dump', clientsSub:'Создание, выдача и скачивание конфигов для выбранного сервера',
     importConf:'Импорт .conf', createClient:'Создать клиента', importTitle:'Импорт Amnezia-конфига', close:'Закрыть', clientName:'Имя клиента', readyConf:'Готовый .conf',
-    saveCopy:'Сохранить и скопировать config', server:'Сервер', term:'Срок', createIssue:'Создать и выдать config', issuedConf:'Выданный конфиг', name:'Имя', status:'Статус', limit:'Лимит', sync:'Синхронизировать', syncing:'Синхронизация', synced:'Синхронизировано', skipped:'пропущено',
+    saveCopy:'Сохранить и скопировать config', server:'Сервер', term:'Срок', createIssue:'Создать и выдать config', issuedConf:'Выданный конфиг', name:'Имя', status:'Статус', limit:'Лимит', sync:'Синхронизировать', syncing:'Синхронизация', synced:'Синхронизировано',
     expires:'Окончание', publicKey:'Публичный ключ', allowedIps:'Разрешенные IP', key:'Ключ', actions:'Действия', activeClientsSub:'Клиенты с действующей подпиской и активным peer в конфиге.', expiredClientsSub:'Клиенты, которые не продлили подписку. Они заблокированы и хранятся отдельно.', blockedAt:'Заблокирован',
     deleteClient:'Удалить клиента?', copied:'Скопировано', noCopyData:'Нет данных для копирования', serverUnavailable:'Выбранный сервер недоступен. Выбери активный сервер или отредактируй подключение.',
     dataUpdated:'Данные обновлены', configCreatedCopied:'Конфиг создан и скопирован', configCreated:'Конфиг создан', configSavedCopied:'Конфиг сохранен и скопирован', configSaved:'Конфиг сохранен',
-    configUnavailable:'Конфиг недоступен', configCopied:'Конфиг скопирован', staleData:'Данные уже изменил другой админ, список обновлён', clientOrOrder:'Клиент или название заказа', contact:'Контакт: Telegram, телефон, email', plan:'Тариф',
+    configUnavailable:'Конфиг недоступен', configCopied:'Конфиг скопирован', staleData:'Данные уже изменил другой админ, список обновлён',
     add:'Добавить', activeOrder:'Активный', paid:'Оплачен', issued:'Выдан', closed:'Закрыт', ordersSub:'Заявки, оплаты и выдача доступов клиентам.', allOrders:'Все заказы', newOrder:'Новый заказ', recentOrders:'Последние заказы', noOrders:'Заказов пока нет', created:'Создан', serversSub:'Список подключений для управления несколькими панелями VPS',
     orderLogin:'Логин', orderEmail:'Почта', orderLoginPlaceholder:'login123', orderEmailPlaceholder:'mail@example.com',
     addServer:'Добавить сервер', editServer:'Редактировать сервер', title:'Название', panelUrl:'URL панели', token:'Токен', saveServer:'Сохранить сервер', endpoint:'URL панели', set:'Задан',
     notSet:'Не задан', active:'Активен', inactiveEdit:'Неактивен · редактировать', select:'Выбрать', edit:'Редактировать', activeServer:'Активный сервер', dumpTitle:'Активный сервер: awg dump',
     noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.', details:'Подробнее', lastSeen:'Последнее подключение', never:'Никогда', download:'Скачать', copyConfig:'Скопировать конфиг', received:'Загрузка', sent:'Отдача', createdClients:'Созданных клиентов',
-    loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', orderNamePlaceholder:'Клиент или название заказа', contactPlaceholder:'Telegram, телефон, email', currentPanel:'Текущая панель', deleteServer:'Удалить сервер?',
+    loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Текущая панель', deleteServer:'Удалить сервер?',
     sortBy:'Сортировка', sortNameAsc:'Имя A-Z', sortNameDesc:'Имя Z-A', sortCreatedDesc:'Дата создания, новые', sortCreatedAsc:'Дата создания, старые', sortLastSeenDesc:'Последнее подключение, новые', sortLastSeenAsc:'Последнее подключение, старые', selectAll:'Выбрать все', clearSelection:'Снять выбор', deleteSelected:'Удалить выбранные', selectedClients:'Выбрано клиентов', createdOnly:'Дата создания', lastConnection:'Последнее подключение', deleting:'Удаление', deleted:'Удалено', bulkActions:'Действия группы', bulkReady:'Можно удалять выбранных', purchase:'Покупка', purchaseSub:'', purchaseLead:'', purchaseOrderSub:'', purchaseAction:'', adminPanel:'Админ-панель'
   },
   us: {
@@ -64,23 +64,23 @@ const dict = {
     purchaseOrderSub:'The order goes straight into the shared active list.',
     purchaseAction:'Place active order',
     adminPanel:'Admin panel',
-    today:'Today', admin:'Admin', oneDay:'1 day', threeDays:'3 days', sevenDays:'7 days', fifteenDays:'15 days', oneMonth:'1 month', threeMonths:'3 months', sixMonths:'6 months', oneYear:'1 year',
+    today:'Today', admin:'Admin', forever:'Forever', oneDay:'1 day', threeDays:'3 days', sevenDays:'7 days', fifteenDays:'15 days', oneMonth:'1 month', threeMonths:'3 months', sixMonths:'6 months', oneYear:'1 year',
     online:'Online', offline:'Offline', recent:'Recent', renewalPending:'Awaiting renewal', checking:'Checking session', signInTitle:'Admin panel sign in', login:'Login', password:'Password', signIn:'Sign in',
     noServer:'No server selected', noEndpoint:'endpoint not set', refresh:'Refresh', refreshing:'Refreshing', logout:'Log out', home:'Home', clients:'Clients', expired:'Expired', orders:'Orders', servers:'Servers', localServer:'Local server', allServers:'All servers', editName:'Edit name', save:'Save', cancel:'Cancel',
     totalClients:'Total clients', activeClients:'Active clients', expiredClients:'Expired clients', serversActive:'Servers / active', activeUsers:'Active users', maxOnline:'Max online clients by day', now:'Now',
     traffic:'Traffic', rx:'Received', tx:'Sent', peersDump:'Peers in dump', clientsSub:'Create, issue, and download configs for the selected server',
     importConf:'Import .conf', createClient:'Create client', importTitle:'Import Amnezia config', close:'Close', clientName:'Client name', readyConf:'Ready .conf',
-    saveCopy:'Save and copy config', server:'Server', term:'Term', createIssue:'Create and issue config', issuedConf:'Issued config', name:'Name', status:'Status', limit:'Limit', sync:'Sync', syncing:'Syncing', synced:'Synced', skipped:'skipped',
+    saveCopy:'Save and copy config', server:'Server', term:'Term', createIssue:'Create and issue config', issuedConf:'Issued config', name:'Name', status:'Status', limit:'Limit', sync:'Sync', syncing:'Syncing', synced:'Synced',
     expires:'Expires', publicKey:'Public key', allowedIps:'Allowed IPs', key:'Key', actions:'Actions', activeClientsSub:'Clients with an active subscription and peer in the config.', expiredClientsSub:'Clients who did not renew. They are blocked and stored separately.', blockedAt:'Blocked',
     deleteClient:'Delete client?', copied:'Copied', noCopyData:'No data to copy', serverUnavailable:'Selected server is unavailable. Select an active server or edit the connection.',
     dataUpdated:'Data updated', configCreatedCopied:'Config created and copied', configCreated:'Config created', configSavedCopied:'Config saved and copied', configSaved:'Config saved',
-    configUnavailable:'Config unavailable', configCopied:'Config copied', staleData:'Another admin already changed this data, list refreshed', clientOrOrder:'Client or order name', contact:'Contact: Telegram, phone, email', plan:'Plan',
+    configUnavailable:'Config unavailable', configCopied:'Config copied', staleData:'Another admin already changed this data, list refreshed',
     add:'Add', activeOrder:'Active', paid:'Paid', issued:'Issued', closed:'Closed', ordersSub:'Requests, payments, and issuing client access.', allOrders:'All orders', newOrder:'New order', recentOrders:'Recent orders', noOrders:'No orders yet', created:'Created', serversSub:'Connection list for managing multiple VPS panels',
     orderLogin:'Login', orderEmail:'Email', orderLoginPlaceholder:'login123', orderEmailPlaceholder:'mail@example.com',
     addServer:'Add server', editServer:'Edit server', title:'Title', panelUrl:'Panel URL', token:'Token', saveServer:'Save server', endpoint:'Panel URL', set:'Set',
     notSet:'Not set', active:'Active', inactiveEdit:'Inactive · edit', select:'Select', edit:'Edit', activeServer:'Active server', dumpTitle:'Active server: awg dump',
     noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.', details:'Details', lastSeen:'Last connected', never:'Never', download:'Download', copyConfig:'Copy config', received:'Received', sent:'Sent', createdClients:'Created clients',
-    loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', orderNamePlaceholder:'Client or order name', contactPlaceholder:'Telegram, phone, email', currentPanel:'Current panel', deleteServer:'Delete server?',
+    loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Current panel', deleteServer:'Delete server?',
     sortBy:'Sort', sortNameAsc:'Name A-Z', sortNameDesc:'Name Z-A', sortCreatedDesc:'Created newest', sortCreatedAsc:'Created oldest', sortLastSeenDesc:'Last connected newest', sortLastSeenAsc:'Last connected oldest', selectAll:'Select all', clearSelection:'Clear selection', deleteSelected:'Delete selected', selectedClients:'Selected clients', createdOnly:'Created date', lastConnection:'Last connected', deleting:'Deleting', deleted:'Deleted', bulkActions:'Group actions', bulkReady:'Ready to delete selected', purchase:'Purchase', purchaseSub:'', purchaseLead:'', purchaseOrderSub:'', purchaseAction:'', adminPanel:'Admin panel'
   }
 };
@@ -106,7 +106,7 @@ const formatDateTime = (seconds, lang='ru') => {
 };
 const isExpired = (key) => key ? key < dateKey() : false;
 const clientTerms = [
-  ['admin','admin'], ['1d','oneDay'], ['3d','threeDays'], ['7d','sevenDays'], ['15d','fifteenDays'], ['1m','oneMonth'], ['3m','threeMonths'], ['6m','sixMonths'], ['1y','oneYear'],
+  ['admin','admin'], ['forever','forever'], ['1d','oneDay'], ['3d','threeDays'], ['7d','sevenDays'], ['15d','fifteenDays'], ['1m','oneMonth'], ['3m','threeMonths'], ['6m','sixMonths'], ['1y','oneYear'],
 ];
 const orderStatuses = [
   ['active', 'activeOrder', Clock3],
@@ -198,7 +198,6 @@ function App(){
   const [password,setPassword]=useState('');
   const [isLoggedIn,setIsLoggedIn]=useState(false);
   const [checkingSession,setCheckingSession]=useState(true);
-  const [isLoading,setIsLoading]=useState(false);
   const [isRefreshing,setIsRefreshing]=useState(false);
   const [notice,setNotice]=useState('');
   const [refreshSeq,setRefreshSeq]=useState(0);
@@ -598,7 +597,6 @@ function App(){
       setIsSyncing(false);
     }
   };
-  const saveOrders = (next) => setOrders(next.map(normalizeOrder));
   const addOrder = async () => {
     const login = orderLogin.trim();
     const email = orderEmail.trim();
@@ -1193,7 +1191,7 @@ function App(){
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className={`badge ${status.className}`}>{status.label}</span></td>
-            <td>{c.expiresAt ? <span className={`badge ${isExpired(c.expiresAt) ? 'expired' : 'muted'}`}>{formatDate(c.expiresAt, lang)}</span> : <span className="badge admin">{t('admin')}</span>}</td>
+            <td>{c.expiresAt ? <span className={`badge ${isExpired(c.expiresAt) ? 'expired' : 'muted'}`}>{formatDate(c.expiresAt, lang)}</span> : <span className="badge admin">{t('forever')}</span>}</td>
             <td>{lastSeenText(c)}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
           </tr>{expandedClientKey === key && renderClientDetails(c, 6)}</React.Fragment> })}
@@ -1207,7 +1205,7 @@ function App(){
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
-            <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>
+            <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('forever')}</span>}</td>
             <td>{lastSeenText(c)}</td>
             <td>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
@@ -1227,7 +1225,7 @@ function App(){
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
-            <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>
+            <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('forever')}</span>}</td>
             <td>{lastSeenText(c)}</td>
             <td>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
             <td className="table-actions">{renderClientActions(c)}</td>

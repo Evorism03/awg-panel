@@ -548,7 +548,7 @@ def add_months(value: date, months: int) -> date:
 
 
 def expiration_date(term: str) -> str:
-    if term == "admin":
+    if term in {"admin", "forever"}:
         return ""
     today = date.today()
     terms = {
