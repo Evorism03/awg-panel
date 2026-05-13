@@ -1287,18 +1287,15 @@ function App(){
 
       <section className="card">
         <div className="panel-head"><div><h2>{t('recentOrders')}</h2><p>{t('allOrders')}: {orders.length}</p></div></div>
-        {orders.length === 0 ? <p>{t('noOrders')}</p> : <table className="orders-table"><thead><tr><th>{t('orderLogin')}</th><th>{t('orderEmail')}</th><th>{t('term')}</th><th>{t('status')}</th><th></th></tr></thead><tbody>
-          {orders.map(o=>{ const normalizedStatus = normalizeOrderStatus(o.status); return <tr key={o.id}>
-            <td><strong>{o.login}</strong><small>{t('created')}: {o.created}</small></td>
-            <td>{o.email||'—'}</td>
+        {orders.length === 0 ? <p>{t('noOrders')}</p> : <table className="orders-table"><thead><tr><th>{t('orderLogin')}</th><th>{t('orderEmail')}</th><th>{t('term')}</th><th>{t('status')}</th><th>{t('created')}</th><th></th></tr></thead><tbody>
+          {orders.map(o=>{ const normalizedStatus = normalizeOrderStatus(o.status); return <tr key={o.id} className="clickable-row">
+            <td><strong>{o.login}</strong></td>
+            <td className="mono">{o.email||'—'}</td>
             <td><span className="badge admin">{o.term}</span></td>
-            <td>
-              <select className={`order-status-select order-status-${normalizedStatus}`} value={normalizedStatus} onChange={e=>updateOrder(o.id,e.target.value)} aria-label={t('status')}>
-                {orderStatuses.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
-              </select>
-            </td>
-            <td className="table-actions"><button className="danger icon-button" onClick={()=>deleteOrder(o.id)}><Trash2 size={16}/></button></td>
-          </tr> })}
+            <td><select className={`order-status-select order-status-${normalizedStatus}`} value={normalizedStatus} onChange={e=>updateOrder(o.id,e.target.value)} onClick={e=>e.stopPropagation()} aria-label={t('status')}>{orderStatuses.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}</select></td>
+            <td className="muted-text">{formatAnyDate(o.created, lang)}</td>
+            <td className="table-actions"><button className="danger icon-button" title={t('deleteClient')} onClick={()=>deleteOrder(o.id)}><Trash2 size={16}/></button></td>
+          </tr>})}
         </tbody></table>}
       </section>
     </>}
