@@ -108,7 +108,7 @@ main{width:100%;max-width:1240px;margin:0 auto;padding:28px}
 .server-table{
   width:100%;
   table-layout:fixed;
-  min-width:0;
+  min-width:100%;
 }
 .orders-table{min-width:780px}
 .server-table th:nth-child(1),.server-table td:nth-child(1){width:24%}
@@ -117,11 +117,13 @@ main{width:100%;max-width:1240px;margin:0 auto;padding:28px}
 .server-table th:nth-child(4),.server-table td:nth-child(4){width:14%}
 .server-table th:nth-child(5),.server-table td:nth-child(5){width:20%}
 .server-table .selected-row{background:#1b2641}
-.server-table th:last-child,.server-table td:last-child{width:120px}
+.server-table th:last-child,.server-table td:last-child{width:220px}
 .table-actions{position:relative;white-space:nowrap}
 .table-actions,.client-actions{display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap}
+.server-table .table-actions{flex-wrap:nowrap}
+.server-table .table-actions button{margin-top:0}
 .rotated{transform:rotate(180deg)}
-.card > table{display:block;max-width:100%;overflow-x:auto;overflow-y:visible;scrollbar-color:#465878 #11182a;scrollbar-width:thin}
+.card > table{display:block;width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;scrollbar-color:#465878 #11182a;scrollbar-width:thin}
 .card > table::-webkit-scrollbar{height:10px}
 .card > table::-webkit-scrollbar-track{background:#11182a;border-radius:999px}
 .card > table::-webkit-scrollbar-thumb{background:#465878;border-radius:999px}
@@ -291,6 +293,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .card{padding:16px}
   .client-table{min-width:980px}
   .expired-client-table{min-width:1060px}
+  .server-table{min-width:900px}
   .client-actions{justify-content:start}
   .table-actions button{margin-top:0}
   .detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -320,6 +323,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .badge{padding:5px 8px}
   .client-table{min-width:920px}
   .expired-client-table{min-width:1000px}
+  .server-table{min-width:820px}
   .orders-table{min-width:700px}
   .detail-row td{padding:0 8px 10px}
   .detail-panel{padding:12px}
@@ -338,6 +342,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .server-summary{grid-template-columns:1fr}
   .client-table{min-width:860px}
   .expired-client-table{min-width:940px}
+  .server-table{min-width:760px}
   .orders-table{min-width:640px}
 }
 @media(prefers-reduced-motion:reduce){
