@@ -4,20 +4,30 @@ set -Eeuo pipefail
 APP_NAME="awg-panel"
 INSTALL_DIR="${INSTALL_DIR:-/opt/awg-panel}"
 PROJECT_SRC="${PROJECT_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+INSTALL_MODE="${INSTALL_MODE:-panel}"
 PANEL_HTTP_BIND="${PANEL_HTTP_BIND:-0.0.0.0}"
 PANEL_HTTP_PORT="${PANEL_HTTP_PORT:-8080}"
-BACKEND_BIND="${BACKEND_BIND:-127.0.0.1}"
+if [ "$INSTALL_MODE" = "agent" ] || [ "$INSTALL_MODE" = "api" ] || [ "$INSTALL_MODE" = "headless" ]; then
+  INSTALL_MODE="agent"
+  BACKEND_BIND="${BACKEND_BIND:-0.0.0.0}"
+else
+  INSTALL_MODE="panel"
+  BACKEND_BIND="${BACKEND_BIND:-127.0.0.1}"
+fi
 BACKEND_PORT="${BACKEND_PORT:-8090}"
 NETWORK_NAME="${NETWORK_NAME:-awg-panel-net}"
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-awg-admin-backend}"
 FRONTEND_CONTAINER="${FRONTEND_CONTAINER:-awg-admin-frontend}"
-QR_CONTAINER="${QR_CONTAINER:-awg-admin-qr-renderer}"
 BACKEND_IMAGE="${BACKEND_IMAGE:-awg-panel-backend}"
 FRONTEND_IMAGE="${FRONTEND_IMAGE:-awg-panel-frontend}"
-QR_IMAGE="${QR_IMAGE:-awg-panel-qr-renderer}"
+LEGACY_QR_CONTAINER="${LEGACY_QR_CONTAINER:-awg-admin-qr-renderer}"
 BACKUP_DIR="${BACKUP_DIR:-/opt/awg-panel-backups}"
 SKIP_DOCKER_INSTALL="${SKIP_DOCKER_INSTALL:-0}"
 FORCE_PORT="${FORCE_PORT:-0}"
+
+frontend_enabled() {
+  [ "$INSTALL_MODE" = "panel" ]
+}
 
 log() {
   printf '\n[%s] %s\n' "$APP_NAME" "$*"
@@ -81,7 +91,7 @@ check_ports() {
   if [ "$FORCE_PORT" = "1" ]; then
     return
   fi
-  if port_is_busy "$PANEL_HTTP_PORT"; then
+  if frontend_enabled && port_is_busy "$PANEL_HTTP_PORT"; then
     local owner
     owner="$(docker ps --filter "publish=$PANEL_HTTP_PORT" --format '{{.Names}}' | head -n 1 || true)"
     if [ "$owner" != "$FRONTEND_CONTAINER" ]; then
@@ -111,10 +121,14 @@ copy_project() {
     --exclude='.agents' \
     --exclude='.codex' \
     --exclude='.env' \
+    --exclude='qr-renderer' \
+    --exclude='backend/.venv' \
+    --exclude='**/.venv' \
     --exclude='frontend/node_modules' \
     --exclude='frontend/dist' \
     --exclude='**/__pycache__' \
     -C "$PROJECT_SRC" -czf /tmp/awg-panel-install.tar.gz .
+  rm -rf "$INSTALL_DIR/qr-renderer"
   tar -xzf /tmp/awg-panel-install.tar.gz -C "$INSTALL_DIR"
   mkdir -p "$INSTALL_DIR/data/clients"
 }
@@ -179,11 +193,11 @@ CLIENT_DNS=${CLIENT_DNS:-1.1.1.1}
 CLIENT_ALLOWED_IPS=${CLIENT_ALLOWED_IPS:-0.0.0.0/0, ::/0}
 CLIENT_PERSISTENT_KEEPALIVE=${CLIENT_PERSISTENT_KEEPALIVE:-25}
 RELOAD_COMMAND=${RELOAD_COMMAND:-docker restart $awg_container}
-QR_RENDERER_URL=http://qr-renderer:8091/render
 PANEL_HTTP_BIND=$PANEL_HTTP_BIND
 PANEL_HTTP_PORT=$PANEL_HTTP_PORT
 BACKEND_BIND=$BACKEND_BIND
 BACKEND_PORT=$BACKEND_PORT
+INSTALL_MODE=$INSTALL_MODE
 EOF_ENV
   chmod 600 "$env_path"
   log "Admin login: ${ADMIN_USERNAME:-admin}"
@@ -192,10 +206,15 @@ EOF_ENV
 
 start_with_compose() {
   local cmd="$1"
+  local services
   log "Starting with $cmd"
   cd "$INSTALL_DIR"
-  docker rm -f "$FRONTEND_CONTAINER" "$BACKEND_CONTAINER" "$QR_CONTAINER" >/dev/null 2>&1 || true
-  $cmd up -d --build backend frontend qr-renderer
+  docker rm -f "$FRONTEND_CONTAINER" "$BACKEND_CONTAINER" "$LEGACY_QR_CONTAINER" >/dev/null 2>&1 || true
+  services="backend"
+  if frontend_enabled; then
+    services="backend frontend"
+  fi
+  $cmd up -d --build $services
 }
 
 start_manually() {
@@ -203,17 +222,11 @@ start_manually() {
   docker network inspect "$NETWORK_NAME" >/dev/null 2>&1 || docker network create "$NETWORK_NAME" >/dev/null
 
   docker build -t "$BACKEND_IMAGE" "$INSTALL_DIR/backend"
-  docker build -t "$FRONTEND_IMAGE" "$INSTALL_DIR/frontend"
-  docker build -t "$QR_IMAGE" "$INSTALL_DIR/qr-renderer"
+  if frontend_enabled; then
+    docker build -t "$FRONTEND_IMAGE" "$INSTALL_DIR/frontend"
+  fi
 
-  docker rm -f "$FRONTEND_CONTAINER" "$BACKEND_CONTAINER" "$QR_CONTAINER" >/dev/null 2>&1 || true
-
-  docker run -d \
-    --name "$QR_CONTAINER" \
-    --restart unless-stopped \
-    --network "$NETWORK_NAME" \
-    --network-alias qr-renderer \
-    "$QR_IMAGE" >/dev/null
+  docker rm -f "$FRONTEND_CONTAINER" "$BACKEND_CONTAINER" "$LEGACY_QR_CONTAINER" >/dev/null 2>&1 || true
 
   docker run -d \
     --name "$BACKEND_CONTAINER" \
@@ -226,20 +239,26 @@ start_manually() {
     -p "$BACKEND_BIND:$BACKEND_PORT:8090" \
     "$BACKEND_IMAGE" >/dev/null
 
-  docker run -d \
-    --name "$FRONTEND_CONTAINER" \
-    --restart unless-stopped \
-    --network "$NETWORK_NAME" \
-    -p "$PANEL_HTTP_BIND:$PANEL_HTTP_PORT:80" \
-    "$FRONTEND_IMAGE" >/dev/null
+  if frontend_enabled; then
+    docker run -d \
+      --name "$FRONTEND_CONTAINER" \
+      --restart unless-stopped \
+      --network "$NETWORK_NAME" \
+      -p "$PANEL_HTTP_BIND:$PANEL_HTTP_PORT:80" \
+      "$FRONTEND_IMAGE" >/dev/null
+  fi
 }
 
 healthcheck() {
-  log "Checking panel"
+  log "Checking installation"
   sleep 2
   curl -fsS "http://127.0.0.1:$BACKEND_PORT/api/health" >/dev/null || fail "Backend healthcheck failed"
-  curl -fsSI "http://127.0.0.1:$PANEL_HTTP_PORT" >/dev/null || fail "Frontend healthcheck failed"
-  docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | grep -E "$FRONTEND_CONTAINER|$BACKEND_CONTAINER|$QR_CONTAINER|NAMES"
+  docker exec "$BACKEND_CONTAINER" sh -lc 'case "${MOCK_AWG:-false}" in 1|true|yes|on) exit 0;; esac; if [ -n "${AWG_DOCKER_CONTAINER:-}" ]; then command -v docker >/dev/null && test -S /var/run/docker.sock && docker inspect "$AWG_DOCKER_CONTAINER" >/dev/null; fi' \
+    || fail "Backend cannot access Docker. Check backend image docker-cli, /var/run/docker.sock mount, and AWG_DOCKER_CONTAINER."
+  if frontend_enabled; then
+    curl -fsSI "http://127.0.0.1:$PANEL_HTTP_PORT" >/dev/null || fail "Frontend healthcheck failed"
+  fi
+  docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | grep -E "$FRONTEND_CONTAINER|$BACKEND_CONTAINER|NAMES"
 }
 
 env_value() {
@@ -252,16 +271,23 @@ env_value() {
 }
 
 print_summary() {
-  local admin_token admin_username admin_password server_endpoint awg_container awg_port panel_url
+  local admin_token admin_username admin_password server_endpoint awg_container awg_port panel_url mode_label
   admin_token="$(env_value ADMIN_TOKEN)"
   admin_username="$(env_value ADMIN_USERNAME)"
   admin_password="$(env_value ADMIN_PASSWORD)"
   server_endpoint="$(env_value SERVER_ENDPOINT)"
   awg_container="$(env_value AWG_DOCKER_CONTAINER)"
   awg_port="${server_endpoint##*:}"
-  panel_url="http://$(detect_public_ip):$PANEL_HTTP_PORT"
+  if frontend_enabled; then
+    panel_url="http://$(detect_public_ip):$PANEL_HTTP_PORT"
+    mode_label="full panel"
+  else
+    panel_url="http://$(detect_public_ip):$BACKEND_PORT"
+    mode_label="agent API"
+  fi
 
   log "Installation summary"
+  log "Install mode: $mode_label"
   log "Panel URL: $panel_url"
   log "Panel token (ADMIN_TOKEN): $admin_token"
   log "Admin login: ${admin_username:-admin}"
@@ -289,7 +315,11 @@ main() {
 
   healthcheck
   print_summary
-  log "Done. Open: http://$(detect_public_ip):$PANEL_HTTP_PORT"
+  if frontend_enabled; then
+    log "Done. Open: http://$(detect_public_ip):$PANEL_HTTP_PORT"
+  else
+    log "Done. Add this VPS in the central panel using Panel URL + Panel token."
+  fi
   log "The installer did not modify system nginx, ports 80/443, or existing websites."
 }
 

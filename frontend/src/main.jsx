@@ -180,7 +180,7 @@ function App(){
   const handleError=(e)=>{
     const message = e.message === 'Unauthorized' ? t('wrongAuth') : e.message;
     setError(message);
-    if (e.message === 'Unauthorized' || message.includes('логин') || message.includes('пароль')) {
+    if (e.message === 'Unauthorized') {
       setIsLoggedIn(false);
       setClients([]);
       setDump('');
@@ -223,6 +223,7 @@ function App(){
 
   const load=async({manual=false}={})=>{
     const serverId = await loadServers().catch(handleError);
+    if (serverId) setIsLoggedIn(true);
     if (serverId) {
       await loadClients(serverId, {manual}).catch(handleError);
     }
@@ -231,6 +232,7 @@ function App(){
   const login=async()=>{
     setError('');
     await api('/api/login',{method:'POST',body:JSON.stringify({username:username.trim(),password})});
+    setIsLoggedIn(true);
     setPassword('');
     await load();
   };
@@ -326,11 +328,16 @@ function App(){
   const closeIssuedConfig=()=>{ setSelectedConfig(''); setLastConfig(''); };
   const logout=async()=>{ await api('/api/logout',{method:'POST'}).catch(()=>{}); setIsLoggedIn(false); setClients([]); setDump(''); setError(''); setNotice(''); };
   const addServer=async()=>{
-    if(!serverName.trim() || !serverBaseUrl.trim() || !serverToken.trim()) return;
+    const editingLocal = editingServerId === 'local';
+    if(!serverName.trim()) return;
+    if(!editingLocal && (!serverBaseUrl.trim() || !serverToken.trim())) return;
     if(editingServerId){
-      await api('/api/servers/'+encodeURIComponent(editingServerId),{method:'PUT',body:JSON.stringify({name:serverName.trim(),baseUrl:serverBaseUrl.trim(),token:serverToken.trim()})});
-      await loadServers();
-      await loadClients(activeServerId).catch(handleError);
+      const payload = editingLocal
+        ? {name:serverName.trim()}
+        : {name:serverName.trim(),baseUrl:serverBaseUrl.trim(),token:serverToken.trim()};
+      await api('/api/servers/'+encodeURIComponent(editingServerId),{method:'PUT',body:JSON.stringify(payload)});
+      const nextActive = await loadServers();
+      await loadClients(nextActive || activeServerId).catch(handleError);
     } else {
       const r=await api('/api/servers',{method:'POST',body:JSON.stringify({name:serverName.trim(),baseUrl:serverBaseUrl.trim(),token:serverToken.trim()})});
       const j=await r.json();
@@ -394,6 +401,7 @@ function App(){
   const totalRx = peerStats.reduce((sum,peer)=>sum + peer.rx, 0);
   const totalTx = peerStats.reduce((sum,peer)=>sum + peer.tx, 0);
   const activeServerCount = servers.filter(server=>server.status === 'online').length;
+  const editingLocalServer = editingServerId === 'local';
   const orderCounts = orderStatuses.reduce((counts,[status])=>({
     ...counts,
     [status]: orders.filter(order=>normalizeOrderStatus(order.status) === status).length,
@@ -661,8 +669,8 @@ function App(){
         </div>
         <div className="server-form-grid">
           <label>{t('title')}<input value={serverName} onChange={e=>setServerName(e.target.value)} placeholder="VPS NL" /></label>
-          <label>{t('panelUrl')}<input value={serverBaseUrl} onChange={e=>setServerBaseUrl(e.target.value)} placeholder="http://45.15.152.113:8080" /></label>
-          <label>{t('token')}<input value={serverToken} onChange={e=>setServerToken(e.target.value)} placeholder={t('token')} type="password" /></label>
+          {!editingLocalServer && <label>{t('panelUrl')}<input value={serverBaseUrl} onChange={e=>setServerBaseUrl(e.target.value)} placeholder="http://45.15.152.113:8080" /></label>}
+          {!editingLocalServer && <label>{t('token')}<input value={serverToken} onChange={e=>setServerToken(e.target.value)} placeholder={t('token')} type="password" /></label>}
         </div>
         <button onClick={()=>addServer().catch(handleError)}><Plus size={16}/>{t('saveServer')}</button>
       </section>}
@@ -673,7 +681,7 @@ function App(){
             <td className="mono">{s.kind === 'local' ? t('localServer') : s.baseUrl}</td>
             <td>{s.kind === 'local' ? <span className="badge ok">{t('set')}</span> : (s.token ? <span className="badge ok">{t('set')}</span> : <span className="badge muted">{t('notSet')}</span>)}</td>
             <td>{serverConnection(s)?<span className="badge ok">{t('active')}</span>:<span className="badge warn">{t('inactiveEdit')}</span>}</td>
-            <td className="table-actions"><button className="secondary" onClick={()=>selectServer(s.id)}>{t('select')}</button>{s.id !== 'local' && <button className="secondary" onClick={()=>editServer(s)}>{t('edit')}</button>}{s.id !== 'local' && <button className="danger" onClick={()=>deleteServer(s.id)}><Trash2 size={16}/></button>}</td>
+            <td className="table-actions"><button className="secondary" onClick={()=>selectServer(s.id)}>{t('select')}</button><button className="secondary" onClick={()=>editServer(s)}>{t('edit')}</button>{s.id !== 'local' && <button className="danger" onClick={()=>deleteServer(s.id)}><Trash2 size={16}/></button>}</td>
           </tr>)}
         </tbody></table>
       </section>

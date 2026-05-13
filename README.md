@@ -2,15 +2,14 @@
 
 Админ-панель для управления клиентами существующего AmneziaWG сервера.
 
-Проект можно разрабатывать локально без установленного AmneziaWG: backend работает в `MOCK_AWG=true`, создает тестовый конфиг в `data/awg0.conf` и генерирует mock-ключи. Для VPS есть Docker-схема: backend и frontend живут в compose, AmneziaWG поднимается отдельным сервисом `awg` в profile `server`, а QR рисует отдельный контейнер `qr-renderer`.
+Проект можно разрабатывать локально без установленного AmneziaWG: backend работает в `MOCK_AWG=true`, создает тестовый конфиг в `data/awg0.conf` и генерирует mock-ключи. Для VPS есть Docker-схема: backend и frontend живут в compose, а AmneziaWG поднимается отдельным сервисом `awg` в profile `server`.
 
 ## Возможности
 
 - список peers из конфига
 - создание клиента
 - скачивание client `.conf`
-- QR-код
-- импорт готового AmneziaWG `.conf` с сохранением, QR и выдачей public key
+- импорт готового AmneziaWG `.conf` с сохранением и выдачей public key
 - удаление клиента
 - отдельный список клиентов, которые не продлили подписку
 - статистика через `awg show dump`
@@ -44,7 +43,6 @@ docker compose --profile server up -d --build
 - `AWG_DOCKER_CONTAINER` должен совпадать с `AWG_CONTAINER_NAME`;
 - `AWG_CONTAINER_CONFIG_PATH` указывает путь к `awg0.conf` внутри контейнера;
 - `AWG_HOST_CONFIG_DIR` хранит конфиг на хосте и монтируется в контейнер `awg`.
-- `QR_RENDERER_URL` указывает на контейнер, который рендерит PNG QR.
 
 ## Быстрая установка панели на VPS
 
@@ -91,7 +89,7 @@ sudo AWG_DOCKER_CONTAINER=amnezia-awg2 \
 - сохраняет backup старой установки в `/opt/awg-panel-backups`;
 - сохраняет существующий `/opt/awg-panel/.env`, если он уже есть;
 - создает `.env` с новым логином/паролем, если файла еще нет;
-- запускает `awg-admin-frontend`, `awg-admin-backend`, `awg-admin-qr-renderer` в отдельной Docker-сети;
+- запускает `awg-admin-frontend` и `awg-admin-backend` в отдельной Docker-сети;
 - не перезаписывает и не перезапускает системный nginx.
 - после установки печатает `Panel URL` и `ADMIN_TOKEN`; это данные, которые нужны для добавления VPS как нового сервера в существующую панель.
 
@@ -100,6 +98,37 @@ sudo AWG_DOCKER_CONTAINER=amnezia-awg2 \
 ```bash
 sudo PANEL_HTTP_PORT=8081 bash scripts/install-vps.sh
 ```
+
+### Установка дополнительного VPS без frontend-панели
+
+Для дополнительного сервера можно поднять только API-агент: `backend`. Frontend в этом режиме не собирается, порт `8080` не нужен, а центральная панель подключается напрямую к backend.
+
+```bash
+sudo INSTALL_MODE=agent \
+SERVER_IP=45.15.152.113 \
+BACKEND_BIND=0.0.0.0 \
+BACKEND_PORT=8090 \
+bash scripts/install-vps.sh
+```
+
+Если контейнер AmneziaWG не определяется автоматически, передай его имя:
+
+```bash
+sudo INSTALL_MODE=agent \
+AWG_DOCKER_CONTAINER=amnezia-awg2 \
+SERVER_IP=45.15.152.113 \
+AWG_PORT=46996 \
+BACKEND_BIND=0.0.0.0 \
+BACKEND_PORT=8090 \
+bash scripts/install-vps.sh
+```
+
+После установки installer напечатает:
+
+- `Panel URL`, например `http://45.15.152.113:8090`;
+- `Panel token (ADMIN_TOKEN)`.
+
+Эти два значения добавляются в центральной панели во вкладке `Серверы`. Для agent-режима должен быть открыт `BACKEND_PORT`, по умолчанию `8090`. Так как backend доступен по сети, закрывай порт firewall-ом по IP центральной панели или ставь reverse proxy с HTTPS.
 
 ## Локальный запуск без Docker
 
@@ -142,7 +171,6 @@ nano .env
 - `AWG_CONTAINER_NAME` и `AWG_DOCKER_CONTAINER` - имя контейнера AmneziaWG
 - `AWG_CONTAINER_CONFIG_PATH` - путь к конфигу внутри контейнера
 - `AWG_HOST_CONFIG_DIR` - каталог на хосте, куда монтируется конфиг
-- `QR_RENDERER_URL` - адрес контейнера-рендерера QR
 - `SERVER_ENDPOINT` - публичный IP или домен сервера с портом WireGuard
 - `RELOAD_COMMAND` - команда перезапуска интерфейса
 
@@ -167,7 +195,7 @@ Frontend будет на `http://localhost:8080`, backend на `http://localhost
 - Для backend без Docker используй Python 3.12 или 3.13. Python 3.14 пока может не подойти для закрепленной версии `pydantic-core`.
 - Backend в контейнере использует Docker socket, чтобы перезапускать и читать контейнер AmneziaWG.
 - При каждом изменении конфига backend создает backup рядом с `AWG_CONFIG_PATH`.
-- VPS не может восстановить полный клиентский конфиг только из `[Peer]` в `awg0.conf`: там нет приватного ключа клиента. Для выдачи готового `.conf` и QR клиент должен быть создан панелью или импортирован через кнопку `Импорт .conf`.
+- VPS не может восстановить полный клиентский конфиг только из `[Peer]` в `awg0.conf`: там нет приватного ключа клиента. Для выдачи готового `.conf` клиент должен быть создан панелью или импортирован через кнопку `Импорт .conf`.
 - Клиенты с истекшим сроком автоматически удаляются из активного `awg0.conf` и сохраняются в списке непродленных подписок: `${CLIENTS_DIR}/expired-clients.json`. В Docker-схеме по умолчанию это `./data/clients/expired-clients.json` на хосте. API списка: `GET /api/expired-clients`.
 
 ## Безопасность

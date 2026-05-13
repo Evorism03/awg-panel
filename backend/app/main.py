@@ -1,12 +1,11 @@
 from fastapi import Cookie, FastAPI, HTTPException, Header, Response
 from fastapi import Query
 from pydantic import BaseModel
-import base64, configparser, io, ipaddress, json, os, re, secrets, shutil, struct, subprocess, time, zlib
+import base64, configparser, ipaddress, json, os, re, secrets, shutil, subprocess, time
 from datetime import date, timedelta
 import urllib.request
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-import qrcode
 from .config import *
 
 app = FastAPI(title="AmneziaWG Admin")
@@ -202,6 +201,21 @@ def save_servers(servers: list[dict]):
         json.dump(servers, f, ensure_ascii=False, indent=2, sort_keys=True)
 
 
+def load_local_server_settings() -> dict:
+    os.makedirs(os.path.dirname(LOCAL_SERVER_PATH), exist_ok=True)
+    if not os.path.exists(LOCAL_SERVER_PATH):
+        return {}
+    with open(LOCAL_SERVER_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return data if isinstance(data, dict) else {}
+
+
+def save_local_server_settings(settings: dict):
+    os.makedirs(os.path.dirname(LOCAL_SERVER_PATH), exist_ok=True)
+    with open(LOCAL_SERVER_PATH, "w", encoding="utf-8") as f:
+        json.dump(settings, f, ensure_ascii=False, indent=2, sort_keys=True)
+
+
 def normalize_panel_url(value: str) -> str:
     url = value.strip().rstrip("/")
     if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
@@ -222,9 +236,10 @@ def server_identity(server: dict) -> dict:
 
 
 def local_server_identity() -> dict:
+    settings = load_local_server_settings()
     return {
         "id": LOCAL_SERVER_ID,
-        "name": LOCAL_SERVER_NAME,
+        "name": settings.get("name") or LOCAL_SERVER_NAME,
         "baseUrl": "local",
         "token": "",
         "kind": "local",
@@ -287,6 +302,8 @@ def panel_json(server: dict, method: str, path: str, payload: dict | None = None
     status, raw, content_type = panel_request(server, method, path, body=body)
     text = raw.decode("utf-8", errors="replace") if raw else ""
     if status >= 400:
+        if status in {401, 403}:
+            raise HTTPException(status_code=502, detail="Remote panel authorization failed. Check server token.")
         detail = text.strip() or "Remote panel error"
         raise HTTPException(status_code=status, detail=detail)
     if content_type == "application/json":
@@ -298,6 +315,8 @@ def panel_bytes(server: dict, method: str, path: str, payload: dict | None = Non
     body = None if payload is None else json.dumps(payload).encode("utf-8")
     status, raw, _ = panel_request(server, method, path, body=body)
     if status >= 400:
+        if status in {401, 403}:
+            raise HTTPException(status_code=502, detail="Remote panel authorization failed. Check server token.")
         detail = raw.decode("utf-8", errors="replace").strip() or "Remote panel error"
         raise HTTPException(status_code=status, detail=detail)
     return raw
@@ -471,122 +490,6 @@ def load_client_export(public_key: str) -> str | None:
     return None
 
 
-def render_qr_from_renderer(vpn_key: str) -> bytes:
-    payload = json.dumps({"text": vpn_key}).encode("utf-8")
-    req = urllib.request.Request(
-        QR_RENDERER_URL,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        return resp.read()
-
-
-def build_amnezia_vpn_key(config_text: str) -> str:
-    interface, peer, dns1, dns2 = client_config_for_amnezia(config_text)
-    endpoint = peer.get("Endpoint", SERVER_ENDPOINT)
-    server_host, _, server_port = endpoint.partition(":")
-    client_priv_key = interface.get("PrivateKey", "")
-    server_pub_key = peer.get("PublicKey", "")
-    psk_key = peer.get("PresharedKey", "")
-    client_pub_key = awg(["pubkey"], input_text=client_priv_key)
-    client_ip = interface.get("Address", "")
-    subnet_address = str(ipaddress.ip_network(client_ip, strict=False).network_address)
-    persistent_keep_alive = peer.get("PersistentKeepalive", CLIENT_PERSISTENT_KEEPALIVE)
-    qr_config_text = "\n".join([
-        "[Interface]",
-        f"Address = {client_ip}",
-        "DNS = $PRIMARY_DNS, $SECONDARY_DNS",
-        f"PrivateKey = {client_priv_key}",
-        f"Jc = {interface.get('Jc', '')}",
-        f"Jmin = {interface.get('Jmin', '')}",
-        f"Jmax = {interface.get('Jmax', '')}",
-        f"S1 = {interface.get('S1', '')}",
-        f"S2 = {interface.get('S2', '')}",
-        f"S3 = {interface.get('S3', '')}",
-        f"S4 = {interface.get('S4', '')}",
-        f"H1 = {interface.get('H1', '')}",
-        f"H2 = {interface.get('H2', '')}",
-        f"H3 = {interface.get('H3', '')}",
-        f"H4 = {interface.get('H4', '')}",
-        "I1 = ",
-        "I2 = ",
-        "I3 = ",
-        "I4 = ",
-        "I5 = ",
-        "",
-        "[Peer]",
-        f"PublicKey = {server_pub_key}",
-        f"PresharedKey = {psk_key}",
-        f"AllowedIPs = {peer.get('AllowedIPs', '0.0.0.0/0, ::/0')}",
-        f"Endpoint = {endpoint}",
-        f"PersistentKeepalive = {persistent_keep_alive}",
-        "",
-    ])
-    last_config = {
-        "H1": interface.get("H1", ""),
-        "H2": interface.get("H2", ""),
-        "H3": interface.get("H3", ""),
-        "H4": interface.get("H4", ""),
-        "I1": strip_amnezia_r_tag(interface.get("I1", "")),
-        "I2": interface.get("I2", ""),
-        "I3": interface.get("I3", ""),
-        "I4": interface.get("I4", ""),
-        "I5": interface.get("I5", ""),
-        "Jc": interface.get("Jc", ""),
-        "Jmax": interface.get("Jmax", ""),
-        "Jmin": interface.get("Jmin", ""),
-        "S1": interface.get("S1", ""),
-        "S2": interface.get("S2", ""),
-        "allowed_ips": [ip.strip() for ip in peer.get("AllowedIPs", "").split(",") if ip.strip()],
-        "clientId": client_pub_key,
-        "client_ip": client_ip,
-        "client_priv_key": client_priv_key,
-        "client_pub_key": client_pub_key,
-        "config": qr_config_text,
-        "hostName": server_host,
-        "mtu": interface.get("MTU", "1280"),
-        "persistent_keep_alive": str(persistent_keep_alive),
-        "port": int(server_port or "51820"),
-        "psk_key": psk_key,
-        "server_pub_key": server_pub_key,
-    }
-    amnezia_payload = {
-        "containers": [
-            {
-                "container": "amnezia-awg",
-                "awg": {
-                    "H1": interface.get("H1", ""),
-                    "H2": interface.get("H2", ""),
-                    "H3": interface.get("H3", ""),
-                    "H4": interface.get("H4", ""),
-                    "Jc": interface.get("Jc", ""),
-                    "Jmax": interface.get("Jmax", ""),
-                    "Jmin": interface.get("Jmin", ""),
-                    "S1": interface.get("S1", ""),
-                    "S2": interface.get("S2", ""),
-                    "last_config": json.dumps(last_config, ensure_ascii=False, indent=4),
-                    "port": int(server_port or "51820"),
-                    "subnet_address": subnet_address,
-                    "transport_proto": "udp",
-                },
-            }
-        ],
-        "defaultContainer": "amnezia-awg",
-        "description": "AmneziaWG client",
-        "dns1": dns1,
-        "dns2": dns2,
-        "hostName": server_host,
-        "nameOverriddenByUser": True,
-    }
-    raw = json.dumps(amnezia_payload, ensure_ascii=False, indent=4).encode("utf-8")
-    compressed = zlib.compress(raw, 9)
-    qcompressed = struct.pack(">I", len(raw)) + compressed
-    encoded = base64.urlsafe_b64encode(qcompressed).decode("ascii").rstrip("=")
-    return f"vpn://{encoded}"
-
-
 def reload_service():
     if MOCK_AWG or not RELOAD_COMMAND:
         return
@@ -651,7 +554,11 @@ def create_server(body: ServerCreate, authorization: str | None = Header(None), 
 def update_server(server_id: str, body: ServerUpdate, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
     auth(authorization, awg_panel_session)
     if server_id == LOCAL_SERVER_ID:
-        raise HTTPException(400, "Local server cannot be edited")
+        name = (body.name or "").strip()
+        if not name:
+            raise HTTPException(400, "Server name is required")
+        save_local_server_settings({"name": name})
+        return {"server": local_server_identity()}
     servers = load_servers()
     for index, server in enumerate(servers):
         if server.get("id") != server_id:
@@ -767,7 +674,6 @@ AllowedIPs = {ip}/32
         "expiresAt": expires_at,
         "config": cfg,
         "configUrl": f"/api/client-config?public_key={public_key}",
-        "qrcodeUrl": f"/api/client-qrcode?public_key={public_key}",
     }
 
 
@@ -796,7 +702,6 @@ def import_client(
         "publicKey": public_key,
         "config": config_text.rstrip() + "\n",
         "configUrl": f"/api/client-config?public_key={public_key}",
-        "qrcodeUrl": f"/api/client-qrcode?public_key={public_key}",
     }
 
 @app.delete("/api/clients/{public_key}")
@@ -864,56 +769,3 @@ def client_config_export(
     if cfg is None:
         raise HTTPException(status_code=404, detail="Client config not found on server")
     return Response(content=cfg, media_type="text/plain; charset=utf-8")
-
-
-@app.get("/api/client-qrcode")
-def client_qrcode(
-    public_key: str,
-    authorization: str | None = Header(None),
-    awg_panel_session: str | None = Cookie(None),
-    server_id: str | None = Query(None),
-):
-    auth(authorization, awg_panel_session)
-    server = get_server(server_id)
-    if server is not None:
-        raw = panel_bytes(server, "GET", f"/client-qrcode?public_key={public_key}")
-        return Response(content=raw, media_type="image/png")
-    cfg = load_client_export(public_key)
-    if cfg is None:
-        raise HTTPException(status_code=404, detail="Client config not found on server")
-    try:
-        return Response(content=render_qr_from_renderer(cfg), media_type="image/png")
-    except Exception:
-        qr_code = qrcode.QRCode(
-            version=None,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=14,
-            border=8,
-        )
-        qr_code.add_data(cfg)
-        qr_code.make(fit=True)
-        img = qr_code.make_image(fill_color="black", back_color="white")
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return Response(content=buf.getvalue(), media_type="image/png")
-
-
-@app.post("/api/qrcode")
-def legacy_qrcode(payload: dict, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
-    auth(authorization, awg_panel_session)
-    config_text = payload.get("config", "")
-    try:
-        return Response(content=render_qr_from_renderer(config_text), media_type="image/png")
-    except Exception:
-        qr_code = qrcode.QRCode(
-            version=None,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=14,
-            border=8,
-        )
-        qr_code.add_data(config_text)
-        qr_code.make(fit=True)
-        img = qr_code.make_image(fill_color="black", back_color="white")
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return Response(content=buf.getvalue(), media_type="image/png")

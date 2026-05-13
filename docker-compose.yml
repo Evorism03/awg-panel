@@ -17,10 +17,6 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
-  qr-renderer:
-    build: ./qr-renderer
-    container_name: awg-admin-qr-renderer
-    restart: unless-stopped
   awg:
     image: ${AWG_IMAGE:-amneziawg-server}
     container_name: ${AWG_CONTAINER_NAME:-awg-panel-awg}
