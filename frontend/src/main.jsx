@@ -1287,27 +1287,56 @@ function App(){
       </section>
 
       <section className="card">
-        <div className="panel-head"><div><h2>{t('allOrders')}</h2><p>{t('ordersSub')}</p></div><span className="badge ok">{orders.length}</span></div>
-        {orders.length === 0 ? <p className="empty-hint">{t('noOrders')}</p> : <table className="orders-table"><thead><tr><th>{t('orderLogin')}</th><th>{t('orderEmail')}</th><th>{t('term')}</th><th>{t('status')}</th><th>{t('created')}</th><th></th></tr></thead><tbody>
-          {orders.map(o=>{ const normalizedStatus = normalizeOrderStatus(o.status); const expanded = expandedOrderId === o.id; return <React.Fragment key={o.id}>
-            <tr className={`clickable-row${expanded?' expanded':''}`} onClick={()=>setExpandedOrderId(expanded?'':o.id)}>
-              <td><strong>{o.login}</strong></td>
-              <td className="mono">{o.email||'—'}</td>
-              <td><span className="badge admin">{o.term}</span></td>
-              <td onClick={e=>e.stopPropagation()}><select className={`order-status-select order-status-${normalizedStatus}`} value={normalizedStatus} onChange={e=>updateOrder(o.id,e.target.value)} aria-label={t('status')}>{orderStatuses.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}</select></td>
-              <td className="muted-text">{formatAnyDate(o.created, lang)}</td>
-              <td className="table-actions" onClick={e=>e.stopPropagation()}><button className="secondary icon-button" onClick={()=>setExpandedOrderId(expanded?'':o.id)}><ChevronDown className={expanded?'rotated':''} size={16}/></button><button className="danger icon-button" onClick={()=>deleteOrder(o.id)}><Trash2 size={16}/></button></td>
-            </tr>
-            {expanded && <tr className="detail-row"><td colSpan={6}><div className="detail-panel">
-              <div className="detail-grid">
-                <div><span>{t('orderLogin')}</span><strong>{o.login}</strong></div>
-                <div><span>{t('orderEmail')}</span><strong>{o.email||'—'}</strong></div>
-                <div><span>{t('term')}</span><strong>{o.term}</strong></div>
-                <div><span>{t('created')}</span><strong>{formatAnyDate(o.created, lang)}</strong></div>
-              </div>
-            </div></td></tr>}
-          </React.Fragment>})}
-        </tbody></table>}
+        <div className="panel-head">
+          <div><h2>{t('allOrders')}</h2><p>{t('ordersSub')}</p></div>
+          <span className="badge ok">{orders.length}</span>
+        </div>
+        {orders.length === 0
+          ? <p style={{padding:'12px 0',color:'var(--muted)'}}>{t('noOrders')}</p>
+          : <table className="orders-table">
+              <thead><tr>
+                <th>{t('orderLogin')}</th>
+                <th>{t('orderEmail')}</th>
+                <th>{t('term')}</th>
+                <th>{t('status')}</th>
+                <th>{t('created')}</th>
+                <th></th>
+              </tr></thead>
+              <tbody>
+                {orders.map(o=>{
+                  const ns = normalizeOrderStatus(o.status);
+                  const expanded = expandedOrderId === o.id;
+                  return <React.Fragment key={o.id}>
+                    <tr className={`clickable-row${expanded?' expanded':''}`} onClick={()=>setExpandedOrderId(expanded?'':o.id)}>
+                      <td><strong>{o.login}</strong></td>
+                      <td className="mono">{o.email||'—'}</td>
+                      <td><span className="badge admin">{o.term}</span></td>
+                      <td><span className={`badge ${orderStatusClass(o.status)}`}>{t(ns)}</span></td>
+                      <td className="muted-text">{formatAnyDate(o.created, lang)}</td>
+                      <td className="table-actions" onClick={e=>e.stopPropagation()}>
+                        <button className="secondary icon-button" onClick={()=>setExpandedOrderId(expanded?'':o.id)}><ChevronDown className={expanded?'rotated':''} size={16}/></button>
+                        <button className="danger icon-button" onClick={()=>deleteOrder(o.id)}><Trash2 size={16}/></button>
+                      </td>
+                    </tr>
+                    {expanded && <tr className="detail-row"><td colSpan={6}><div className="detail-panel">
+                      <div className="detail-grid">
+                        <div><span>{t('orderLogin')}</span><strong>{o.login}</strong></div>
+                        <div><span>{t('orderEmail')}</span><strong>{o.email||'—'}</strong></div>
+                        <div><span>{t('term')}</span><strong>{o.term}</strong></div>
+                        <div><span>{t('created')}</span><strong>{formatAnyDate(o.created, lang)}</strong></div>
+                      </div>
+                      <div className="detail-actions">
+                        <select className={`order-status-select order-status-${ns}`} value={ns} onChange={e=>updateOrder(o.id,e.target.value)} aria-label={t('status')}>
+                          {orderStatuses.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
+                        </select>
+                        <button className="danger" onClick={()=>{ deleteOrder(o.id); setExpandedOrderId(''); }}><Trash2 size={16}/>{t('deleteClient')}</button>
+                      </div>
+                    </div></td></tr>}
+                  </React.Fragment>;
+                })}
+              </tbody>
+            </table>
+        }
       </section>
     </>}
 
