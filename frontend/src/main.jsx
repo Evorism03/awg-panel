@@ -238,6 +238,7 @@ function App(){
   const [editingClientName,setEditingClientName]=useState('');
   const [expandedClientKey,setExpandedClientKey]=useState('');
   const [expandedServerId,setExpandedServerId]=useState('');
+  const [expandedOrderId,setExpandedOrderId]=useState('');
   const [selectedClientKeys,setSelectedClientKeys]=useState(()=>new Set());
   const [bulkDeleteState,setBulkDeleteState]=useState({running:false,total:0,done:0,last:''});
   const [pendingClientKeys,setPendingClientKeys]=useState(()=>new Set());
@@ -1288,14 +1289,24 @@ function App(){
       <section className="card">
         <div className="panel-head"><div><h2>{t('recentOrders')}</h2><p>{t('allOrders')}: {orders.length}</p></div></div>
         {orders.length === 0 ? <p>{t('noOrders')}</p> : <table className="orders-table"><thead><tr><th>{t('orderLogin')}</th><th>{t('orderEmail')}</th><th>{t('term')}</th><th>{t('status')}</th><th>{t('created')}</th><th></th></tr></thead><tbody>
-          {orders.map(o=>{ const normalizedStatus = normalizeOrderStatus(o.status); return <tr key={o.id} className="clickable-row">
-            <td><strong>{o.login}</strong></td>
-            <td className="mono">{o.email||'—'}</td>
-            <td><span className="badge admin">{o.term}</span></td>
-            <td><select className={`order-status-select order-status-${normalizedStatus}`} value={normalizedStatus} onChange={e=>updateOrder(o.id,e.target.value)} onClick={e=>e.stopPropagation()} aria-label={t('status')}>{orderStatuses.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}</select></td>
-            <td className="muted-text">{formatAnyDate(o.created, lang)}</td>
-            <td className="table-actions"><button className="danger icon-button" title={t('deleteClient')} onClick={()=>deleteOrder(o.id)}><Trash2 size={16}/></button></td>
-          </tr>})}
+          {orders.map(o=>{ const normalizedStatus = normalizeOrderStatus(o.status); const expanded = expandedOrderId === o.id; return <React.Fragment key={o.id}>
+            <tr className={`clickable-row${expanded?' expanded':''}`} onClick={()=>setExpandedOrderId(expanded?'':o.id)}>
+              <td><strong>{o.login}</strong></td>
+              <td className="mono">{o.email||'—'}</td>
+              <td><span className="badge admin">{o.term}</span></td>
+              <td onClick={e=>e.stopPropagation()}><select className={`order-status-select order-status-${normalizedStatus}`} value={normalizedStatus} onChange={e=>updateOrder(o.id,e.target.value)} aria-label={t('status')}>{orderStatuses.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}</select></td>
+              <td className="muted-text">{formatAnyDate(o.created, lang)}</td>
+              <td className="table-actions" onClick={e=>e.stopPropagation()}><button className="secondary icon-button" onClick={()=>setExpandedOrderId(expanded?'':o.id)}><ChevronDown className={expanded?'rotated':''} size={16}/></button><button className="danger icon-button" title={t('deleteClient')} onClick={()=>deleteOrder(o.id)}><Trash2 size={16}/></button></td>
+            </tr>
+            {expanded && <tr className="detail-row"><td colSpan={6}><div className="detail-panel">
+              <div className="detail-grid">
+                <div><span>{t('orderLogin')}</span><strong>{o.login}</strong></div>
+                <div><span>{t('orderEmail')}</span><strong>{o.email||'—'}</strong></div>
+                <div><span>{t('term')}</span><strong>{o.term}</strong></div>
+                <div><span>{t('created')}</span><strong>{formatAnyDate(o.created, lang)}</strong></div>
+              </div>
+            </div></td></tr>}
+          </React.Fragment>})}
         </tbody></table>}
       </section>
     </>}

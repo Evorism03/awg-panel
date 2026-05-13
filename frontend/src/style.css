@@ -287,13 +287,13 @@ main.public-page{max-width:1280px;padding:24px 24px 36px}
   table-layout:fixed;
   min-width:100%;
 }
-.orders-table{table-layout:fixed;min-width:680px}
+.orders-table{width:100%;table-layout:fixed;min-width:680px}
 .orders-table th:nth-child(1),.orders-table td:nth-child(1){width:18%}
 .orders-table th:nth-child(2),.orders-table td:nth-child(2){width:22%}
-.orders-table th:nth-child(3),.orders-table td:nth-child(3){width:12%}
-.orders-table th:nth-child(4),.orders-table td:nth-child(4){width:18%}
-.orders-table th:nth-child(5),.orders-table td:nth-child(5){width:20%}
-.orders-table th:nth-child(6),.orders-table td:nth-child(6){width:10%;text-align:right}
+.orders-table th:nth-child(3),.orders-table td:nth-child(3){width:11%}
+.orders-table th:nth-child(4),.orders-table td:nth-child(4){width:17%}
+.orders-table th:nth-child(5),.orders-table td:nth-child(5){width:18%}
+.orders-table th:nth-child(6),.orders-table td:nth-child(6){width:14%;text-align:right}
 .orders-table td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .muted-text{color:var(--muted);font-size:13px}
 .order-status-select{padding:5px 10px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border:none;cursor:pointer;appearance:none;-webkit-appearance:none;width:auto;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23fff' opacity='.6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:24px}
