@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {Activity, ArrowDown, ArrowUp, ArrowUpDown, Check, CheckCircle2, ChevronDown, Clipboard, Clock3, CreditCard, Download, Home, LogOut, Pencil, Plus, RefreshCw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
 import './style.css';
@@ -208,6 +208,7 @@ function App(){
   const [selectedClientKeys,setSelectedClientKeys]=useState(()=>new Set());
   const [clientSortField,setClientSortField]=useState('name');
   const [clientSortDir,setClientSortDir]=useState('asc');
+  const selectionDragRef = useRef({active:false, desired:false, suppressClick:false, lastKey:''});
   const isAggregateServer = activeServerId === 'all';
 
   const handleError=(e)=>{
@@ -340,8 +341,7 @@ function App(){
     await copyText(j.config, t('configSavedCopied')).catch(()=>setNotice(t('configSaved')));
   };
 
-  const remove=async(pk, serverId=activeServerId, {confirmDelete=true}={})=>{
-    if(confirmDelete && !confirm(t('deleteClient'))) return;
+  const deleteClientEntry=async(pk, serverId=activeServerId)=>{
     const savedConfig = clientConfigs[pk];
     const params = new URLSearchParams({public_key: pk});
     if (serverId) params.set('server_id', serverId);
@@ -355,6 +355,10 @@ function App(){
         closeIssuedConfig();
       }
     }
+  };
+  const remove=async(pk, serverId=activeServerId, {confirmDelete=true}={})=>{
+    if(confirmDelete && !confirm(t('deleteClient'))) return;
+    await deleteClientEntry(pk, serverId);
     await load();
   };
   const clientRowKey=(client)=>`${client.serverId || 'local'}:${client.PublicKey}`;
@@ -520,6 +524,22 @@ function App(){
     loadAllServerStats().catch(()=>{});
   },[isLoggedIn, view, servers.length]);
 
+  useEffect(()=>{
+    const stopSelectionDrag = () => {
+      if (!selectionDragRef.current.active) return;
+      selectionDragRef.current.active = false;
+      selectionDragRef.current.lastKey = '';
+      selectionDragRef.current.suppressClick = true;
+      window.setTimeout(()=>{ selectionDragRef.current.suppressClick = false; }, 0);
+    };
+    window.addEventListener('mouseup', stopSelectionDrag);
+    window.addEventListener('blur', stopSelectionDrag);
+    return ()=>{
+      window.removeEventListener('mouseup', stopSelectionDrag);
+      window.removeEventListener('blur', stopSelectionDrag);
+    };
+  },[]);
+
   const clientStatus = (client)=>{
     const publicKey = client?.PublicKey;
     const sourceServerId = client?.serverId;
@@ -540,6 +560,14 @@ function App(){
     return latest ? formatDateTime(latest, lang) : t('never');
   };
   const isClientSelected = (key) => selectedClientKeys.has(key);
+  const applyClientSelection = (key, selected) => {
+    setSelectedClientKeys(current => {
+      const next = new Set(current);
+      if (selected) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  };
   const toggleClientSelected = (client) => {
     const key = clientRowKey(client);
     setSelectedClientKeys(current => {
@@ -548,6 +576,41 @@ function App(){
       else next.add(key);
       return next;
     });
+  };
+  const beginClientSelectionDrag = (client, event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const key = clientRowKey(client);
+    const desired = !isClientSelected(key);
+    selectionDragRef.current.active = true;
+    selectionDragRef.current.desired = desired;
+    selectionDragRef.current.lastKey = key;
+    applyClientSelection(key, desired);
+  };
+  const continueClientSelectionDrag = (client) => {
+    const drag = selectionDragRef.current;
+    if (!drag.active) return;
+    const key = clientRowKey(client);
+    if (drag.lastKey === key) return;
+    drag.lastKey = key;
+    applyClientSelection(key, drag.desired);
+  };
+  const clearClientSelection = () => setSelectedClientKeys(new Set());
+  const selectAllVisibleClients = () => {
+    const list = view === 'expired' ? sortedPendingRenewalClients : [...sortedActiveClients, ...sortedPendingRenewalClients];
+    setSelectedClientKeys(new Set(list.map(clientRowKey)));
+  };
+  const deleteSelectedClients = async () => {
+    if (!selectedClientKeys.size) return;
+    if (!confirm(`${t('deleteSelected')}?`)) return;
+    const keys = [...selectedClientKeys];
+    for (const entry of keys) {
+      const [serverId, ...rest] = entry.split(':');
+      const publicKey = rest.join(':');
+      await deleteClientEntry(publicKey, serverId || activeServerId);
+    }
+    clearClientSelection();
+    await load();
   };
   const clientFieldValue = (client, field) => {
     const stat = clientPeerStat(client);
@@ -629,10 +692,10 @@ function App(){
   const renderClientActions=(client)=> {
     const key = clientRowKey(client);
     return <div className="client-actions">
-      <button className={`secondary icon-button ${isClientSelected(key) ? 'selected' : ''}`} title={isClientSelected(key) ? t('clearSelection') : t('select')} onClick={(event)=>{ event.stopPropagation(); toggleClientSelected(client); }}><CheckCircle2 size={16}/></button>
-      <button className="secondary icon-button" title={t('details')} onClick={(event)=>{ event.stopPropagation(); setExpandedClientKey(expandedClientKey === key ? '' : key); }}><ChevronDown className={expandedClientKey === key ? 'rotated' : ''} size={16}/></button>
-      <button className="secondary icon-button" title={t('editName')} onClick={(event)=>{ event.stopPropagation(); beginEditClient(client); }}><Pencil size={16}/></button>
-      <button className="danger icon-button" title={t('deleteClient')} onClick={(event)=>{ event.stopPropagation(); remove(client.PublicKey, client.serverId).catch(handleError); }}><Trash2 size={16}/></button>
+      <button className={`secondary icon-button ${isClientSelected(key) ? 'selected' : ''}`} title={isClientSelected(key) ? t('clearSelection') : t('select')} onMouseDown={event=>event.stopPropagation()} onClick={(event)=>{ event.stopPropagation(); toggleClientSelected(client); }}><CheckCircle2 size={16}/></button>
+      <button className="secondary icon-button" title={t('details')} onMouseDown={event=>event.stopPropagation()} onClick={(event)=>{ event.stopPropagation(); setExpandedClientKey(expandedClientKey === key ? '' : key); }}><ChevronDown className={expandedClientKey === key ? 'rotated' : ''} size={16}/></button>
+      <button className="secondary icon-button" title={t('editName')} onMouseDown={event=>event.stopPropagation()} onClick={(event)=>{ event.stopPropagation(); beginEditClient(client); }}><Pencil size={16}/></button>
+      <button className="danger icon-button" title={t('deleteClient')} onMouseDown={event=>event.stopPropagation()} onClick={(event)=>{ event.stopPropagation(); remove(client.PublicKey, client.serverId).catch(handleError); }}><Trash2 size={16}/></button>
     </div>;
   };
   const renderClientDetails=(client, colSpan)=>{
@@ -689,7 +752,7 @@ function App(){
     </section>
   </main>;
 
-  return <main>
+  return <main className={selectedClientKeys.size > 0 ? 'selection-active' : ''}>
     <header className="topbar">
       <div><h1>{t('appName')}</h1><p>{activeServer?.name || t('noServer')} · {activeServer?.kind === 'local' ? t('localServer') : activeServer?.kind === 'aggregate' ? t('allServers') : (activeServer?.baseUrl || t('noEndpoint'))}</p></div>
       <div className="actions">
@@ -732,6 +795,11 @@ function App(){
       <section className="section-head">
         <div><h2>{t('clients')}</h2><p>{t('clientsSub')}</p></div>
         <div className="actions">
+          <button className="secondary" onClick={selectAllVisibleClients}><CheckCircle2 size={16}/>{t('selectAll')}</button>
+          {selectedClientKeys.size > 0 && <>
+            <button className="secondary" onClick={clearClientSelection}><X size={16}/>{t('clearSelection')}</button>
+            <button className="danger" onClick={()=>deleteSelectedClients().catch(handleError)}><Trash2 size={16}/>{t('deleteSelected')}</button>
+          </>}
           <button className={activeServerId==='all'?'secondary active':'secondary'} onClick={()=>selectServer('all')}>{t('allServers')}</button>
           <button className="secondary" onClick={()=>setShowImportForm(true)}><Upload size={16}/>{t('importConf')}</button>
           <button onClick={()=>setShowClientForm(true)}><Plus size={16}/>{t('createClient')}</button>
@@ -778,7 +846,7 @@ function App(){
       <section className="card">
         <div className="panel-head"><div><h2>{t('activeClients')}</h2><p>{t('activeClientsSub')}</p></div><span className="badge ok">{activeClientsList.length}</span></div>
         <table className="client-table active-client-table"><thead><tr><th><button type="button" className={`table-sort ${clientSortField==='name' ? 'active' : ''}`} onClick={()=>setClientSort('name')}>{t('name')}{sortIcon('name')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='server' ? 'active' : ''}`} onClick={()=>setClientSort('server')}>{t('server')}{sortIcon('server')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='status' ? 'active' : ''}`} onClick={()=>setClientSort('status')}>{t('status')}{sortIcon('status')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='expires' ? 'active' : ''}`} onClick={()=>setClientSort('expires')}>{t('expires')}{sortIcon('expires')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='lastConnection' ? 'active' : ''}`} onClick={()=>setClientSort('lastConnection')}>{t('lastConnection')}{sortIcon('lastConnection')}</button></th><th></th></tr></thead><tbody>
-          {sortedActiveClients.map(c=>{ const key = clientRowKey(c); const status = clientStatus(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
+          {sortedActiveClients.map(c=>{ const key = clientRowKey(c); const status = clientStatus(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className={`badge ${status.className}`}>{status.label}</span></td>
@@ -792,7 +860,7 @@ function App(){
       {pendingRenewalClients.length > 0 && <section className="card">
         <div className="panel-head"><div><h2>{t('expiredClients')}</h2><p>{t('expiredClientsSub')}</p></div><span className="badge expired">{pendingRenewalClients.length}</span></div>
         <table className="client-table expired-client-table"><thead><tr><th><button type="button" className={`table-sort ${clientSortField==='name' ? 'active' : ''}`} onClick={()=>setClientSort('name')}>{t('name')}{sortIcon('name')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='server' ? 'active' : ''}`} onClick={()=>setClientSort('server')}>{t('server')}{sortIcon('server')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='status' ? 'active' : ''}`} onClick={()=>setClientSort('status')}>{t('status')}{sortIcon('status')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='expires' ? 'active' : ''}`} onClick={()=>setClientSort('expires')}>{t('expires')}{sortIcon('expires')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='lastConnection' ? 'active' : ''}`} onClick={()=>setClientSort('lastConnection')}>{t('lastConnection')}{sortIcon('lastConnection')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='blockedAt' ? 'active' : ''}`} onClick={()=>setClientSort('blockedAt')}>{t('blockedAt')}{sortIcon('blockedAt')}</button></th><th></th></tr></thead><tbody>
-          {sortedPendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
+          {sortedPendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
@@ -812,7 +880,7 @@ function App(){
       </section>
       <section className="card">
         <table className="client-table expired-client-table"><thead><tr><th><button type="button" className={`table-sort ${clientSortField==='name' ? 'active' : ''}`} onClick={()=>setClientSort('name')}>{t('name')}{sortIcon('name')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='server' ? 'active' : ''}`} onClick={()=>setClientSort('server')}>{t('server')}{sortIcon('server')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='status' ? 'active' : ''}`} onClick={()=>setClientSort('status')}>{t('status')}{sortIcon('status')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='expires' ? 'active' : ''}`} onClick={()=>setClientSort('expires')}>{t('expires')}{sortIcon('expires')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='lastConnection' ? 'active' : ''}`} onClick={()=>setClientSort('lastConnection')}>{t('lastConnection')}{sortIcon('lastConnection')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='blockedAt' ? 'active' : ''}`} onClick={()=>setClientSort('blockedAt')}>{t('blockedAt')}{sortIcon('blockedAt')}</button></th><th></th></tr></thead><tbody>
-          {sortedPendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
+          {sortedPendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
@@ -916,6 +984,17 @@ function App(){
       </section>
       <section className="card"><h2>{t('dumpTitle')}</h2><pre>{dump||t('noDump')}</pre></section>
     </>}
+
+    {selectedClientKeys.size > 0 && <section className="selection-bar" aria-live="polite">
+      <div className="selection-bar-left">
+        <div className="selection-count">{t('selectedClients')}: <strong>{selectedClientKeys.size}</strong></div>
+      </div>
+      <div className="selection-bar-actions">
+        <button className="secondary" onClick={selectAllVisibleClients}><CheckCircle2 size={16}/>{t('selectAll')}</button>
+        <button className="secondary" onClick={clearClientSelection}><X size={16}/>{t('clearSelection')}</button>
+        <button className="danger" onClick={()=>deleteSelectedClients().catch(handleError)}><Trash2 size={16}/>{t('deleteSelected')}</button>
+      </div>
+    </section>}
   </main>
 }
 

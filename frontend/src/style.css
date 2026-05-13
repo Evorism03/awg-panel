@@ -28,6 +28,7 @@ body{
   line-height:1.45;
 }
 main{width:100%;max-width:1240px;margin:0 auto;padding:28px}
+main.selection-active{padding-bottom:118px}
 .auth-page{min-height:100vh;display:grid;place-items:center}
 .login-card{width:min(420px,100%);animation:panel-in .34s ease both}
 .login-card input{margin-bottom:14px}
@@ -109,6 +110,30 @@ main{width:100%;max-width:1240px;margin:0 auto;padding:28px}
 .toolbar-field select{min-width:180px}
 .selection-hint{align-self:center;color:var(--muted);font-size:13px;font-weight:700}
 .clients-toolbar-actions button{min-width:132px}
+.selection-bar{
+  position:fixed;
+  left:50%;
+  bottom:14px;
+  transform:translateX(-50%);
+  width:min(1240px,calc(100% - 24px));
+  z-index:20;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 14px;
+  border:1px solid #38507c;
+  border-radius:10px;
+  background:linear-gradient(180deg,rgba(12,18,34,.96),rgba(9,14,26,.96));
+  box-shadow:0 16px 42px rgba(0,0,0,.45);
+  backdrop-filter:blur(10px);
+  animation:panel-in .2s ease both;
+}
+.selection-bar-left{display:flex;align-items:center;gap:10px;min-width:0}
+.selection-count{color:var(--muted);font-weight:800;white-space:nowrap}
+.selection-count strong{color:#fff}
+.selection-bar-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.selection-bar-actions button{min-width:0}
 .server-form-grid,.client-form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:16px}
 .server-form-grid label,.client-form-grid label{margin:0}
 .server-summary{
@@ -314,6 +339,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .server-form-grid,.client-form-grid{grid-template-columns:1fr}
   .section-head,.panel-head{align-items:flex-start;flex-wrap:wrap}
   .section-head .actions,.panel-head .actions{width:100%;justify-content:flex-start}
+  main.selection-active{padding-bottom:152px}
+  .selection-bar{width:calc(100% - 20px)}
 }
 @media(max-width:800px){
   main{padding:18px}
@@ -343,6 +370,10 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .orders-table select{max-width:none}
   td,th{font-size:13px;padding:10px 8px}
+  .selection-bar{flex-direction:column;align-items:stretch}
+  .selection-bar-left{justify-content:space-between}
+  .selection-bar-actions{justify-content:stretch}
+  .selection-bar-actions button{flex:1 1 120px}
 }
 @media(max-width:520px){
   main{padding:14px}
@@ -375,6 +406,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .detail-actions{display:grid;grid-template-columns:1fr}
   .detail-actions button{width:100%}
   td,th{font-size:12px;padding:9px 7px}
+  main.selection-active{padding-bottom:190px}
+  .selection-bar{bottom:10px;padding:11px 12px;width:calc(100% - 16px)}
+  .selection-count{font-size:13px}
+  .selection-bar-actions{gap:6px}
+  .selection-bar-actions button{flex-basis:100%;padding:10px 12px}
 }
 @media(max-width:380px){
   main{padding:10px}
@@ -388,6 +424,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .expired-client-table{min-width:980px}
   .server-table{min-width:760px}
   .orders-table{min-width:640px}
+  .selection-bar{gap:10px}
 }
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
