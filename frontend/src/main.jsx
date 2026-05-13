@@ -166,6 +166,8 @@ function App(){
   const [refreshSeq,setRefreshSeq]=useState(0);
   const [clients,setClients]=useState([]);
   const [dump,setDump]=useState('');
+  const [allServerClients,setAllServerClients]=useState([]);
+  const [allServerDump,setAllServerDump]=useState('');
   const [name,setName]=useState('');
   const [clientTerm,setClientTerm]=useState('admin');
   const [showClientForm,setShowClientForm]=useState(false);
@@ -202,6 +204,8 @@ function App(){
       setIsLoggedIn(false);
       setClients([]);
       setDump('');
+      setAllServerClients([]);
+      setAllServerDump('');
     }
   };
 
@@ -239,12 +243,19 @@ function App(){
       if (manual) setIsRefreshing(false);
     }
   };
+  const loadAllServerStats=async()=>{
+    const r=await api('/api/clients?server_id=all');
+    const j=await r.json();
+    setAllServerClients(j.clients||[]);
+    setAllServerDump(j.dump||'');
+  };
 
   const load=async({manual=false}={})=>{
     const serverId = await loadServers().catch(handleError);
     if (serverId) setIsLoggedIn(true);
     if (serverId) {
       await loadClients(serverId, {manual}).catch(handleError);
+      await loadAllServerStats().catch(()=>{});
     }
   };
 
@@ -365,7 +376,7 @@ function App(){
     await copyText(config, t('configCopied'));
   };
   const closeIssuedConfig=()=>{ setSelectedConfig(''); setLastConfig(''); };
-  const logout=async()=>{ await api('/api/logout',{method:'POST'}).catch(()=>{}); setIsLoggedIn(false); setClients([]); setDump(''); setError(''); setNotice(''); };
+  const logout=async()=>{ await api('/api/logout',{method:'POST'}).catch(()=>{}); setIsLoggedIn(false); setClients([]); setDump(''); setAllServerClients([]); setAllServerDump(''); setError(''); setNotice(''); };
   const addServer=async()=>{
     const editingLocal = editingServerId === 'local';
     if(!serverName.trim()) return;
@@ -443,6 +454,8 @@ function App(){
   const pendingRenewalClients = clients.filter(client=>client.blocked || ['not_renewed','renewal_pending'].includes(client.status));
   const peerStats = parsePeerStats(dump);
   const peerStatsByKey = Object.fromEntries(peerStats.map(peer=>[peer.publicKey, peer]));
+  const allServerStatsClients = allServerClients.length ? allServerClients : clients;
+  const allServerPeerStats = parsePeerStats(allServerDump || dump);
   const nowSeconds = Math.floor(Date.now() / 1000);
   const activeClientCount = peerStats.filter(peer=>peer.latest && nowSeconds - peer.latest < 60).length;
   const totalRx = peerStats.reduce((sum,peer)=>sum + peer.rx, 0);
@@ -486,6 +499,11 @@ function App(){
     return ()=>clearInterval(timer);
   },[isLoggedIn, activeServerId]);
 
+  useEffect(()=>{
+    if(!isLoggedIn || view !== 'server') return;
+    loadAllServerStats().catch(()=>{});
+  },[isLoggedIn, view, servers.length]);
+
   const clientStatus = (client)=>{
     const publicKey = client?.PublicKey;
     const sourceServerId = client?.serverId;
@@ -506,11 +524,11 @@ function App(){
     return latest ? formatDateTime(latest, lang) : t('never');
   };
   const serverStats = (server)=>{
-    const serverClients = server.id === 'all' ? clients : clients.filter(client=>(client.serverId || 'local') === server.id);
+    const serverClients = server.id === 'all' ? allServerStatsClients : allServerStatsClients.filter(client=>(client.serverId || 'local') === server.id);
     const active = serverClients.filter(client=>!client.blocked).length;
     const created = serverClients.filter(client=>client.createdAt).length;
     const keys = new Set(serverClients.map(client=>client.PublicKey));
-    const stats = peerStats.filter(peer=>keys.has(peer.publicKey));
+    const stats = allServerPeerStats.filter(peer=>keys.has(peer.publicKey));
     return {
       total: serverClients.length,
       active,
