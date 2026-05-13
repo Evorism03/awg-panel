@@ -1297,7 +1297,7 @@ function App(){
                 {orderStatuses.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
               </select>
             </td>
-            <td className="table-actions"><button className="danger" onClick={()=>deleteOrder(o.id)}><Trash2 size={16}/></button></td>
+            <td className="table-actions"><button className="danger icon-button" onClick={()=>deleteOrder(o.id)}><Trash2 size={16}/></button></td>
           </tr> })}
         </tbody></table>}
       </section>
