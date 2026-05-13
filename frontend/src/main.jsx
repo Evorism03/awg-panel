@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Activity, Check, CheckCircle2, Clipboard, Clock3, CreditCard, Download, Home, LogOut, MoreVertical, Pencil, Plus, RefreshCw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
+import {Activity, Check, CheckCircle2, ChevronDown, Clipboard, Clock3, CreditCard, Download, Home, LogOut, Pencil, Plus, RefreshCw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
 import './style.css';
 
 const api = async (path, options={}) => {
@@ -42,7 +42,7 @@ const dict = {
     add:'Добавить', new:'Новый', paid:'Оплачен', issued:'Выдан', closed:'Закрыт', ordersSub:'Заявки, оплаты и выдача доступов клиентам.', allOrders:'Все заказы', newOrder:'Новый заказ', recentOrders:'Последние заказы', noOrders:'Заказов пока нет', created:'Создан', serversSub:'Список подключений для управления несколькими панелями VPS',
     addServer:'Добавить сервер', editServer:'Редактировать сервер', title:'Название', panelUrl:'URL панели', token:'Токен', saveServer:'Сохранить сервер', endpoint:'URL панели', set:'Задан',
     notSet:'Не задан', active:'Активен', inactiveEdit:'Неактивен · редактировать', select:'Выбрать', edit:'Редактировать', activeServer:'Активный сервер', dumpTitle:'Активный сервер: awg dump',
-    noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.'
+    noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.', details:'Подробнее', lastSeen:'Последнее подключение', never:'Никогда', download:'Скачать', copyConfig:'Скопировать конфиг', received:'Загрузка', sent:'Отдача', createdClients:'Созданных клиентов'
   },
   en: {
     today:'Today', admin:'Admin', oneDay:'1 day', threeDays:'3 days', sevenDays:'7 days', fifteenDays:'15 days', oneMonth:'1 month', threeMonths:'3 months', sixMonths:'6 months', oneYear:'1 year',
@@ -59,7 +59,7 @@ const dict = {
     add:'Add', new:'New', paid:'Paid', issued:'Issued', closed:'Closed', ordersSub:'Requests, payments, and issuing client access.', allOrders:'All orders', newOrder:'New order', recentOrders:'Recent orders', noOrders:'No orders yet', created:'Created', serversSub:'Connection list for managing multiple VPS panels',
     addServer:'Add server', editServer:'Edit server', title:'Title', panelUrl:'Panel URL', token:'Token', saveServer:'Save server', endpoint:'Panel URL', set:'Set',
     notSet:'Not set', active:'Active', inactiveEdit:'Inactive · edit', select:'Select', edit:'Edit', activeServer:'Active server', dumpTitle:'Active server: awg dump',
-    noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.'
+    noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.', details:'Details', lastSeen:'Last connected', never:'Never', download:'Download', copyConfig:'Copy config', received:'Received', sent:'Sent', createdClients:'Created clients'
   }
 };
 
@@ -75,6 +75,12 @@ const formatAnyDate = (value, lang='ru') => {
   const date = new Date(normalized);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {day:'2-digit', month:'2-digit', year:'numeric'});
+};
+const formatDateTime = (seconds, lang='ru') => {
+  if (!seconds) return '—';
+  const date = new Date(seconds * 1000);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString(lang === 'ru' ? 'ru-RU' : 'en-US', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
 };
 const isExpired = (key) => key ? key < dateKey() : false;
 const clientTerms = [
@@ -185,7 +191,8 @@ function App(){
   const [error,setError]=useState('');
   const [editingClientKey,setEditingClientKey]=useState('');
   const [editingClientName,setEditingClientName]=useState('');
-  const [openActionMenuKey,setOpenActionMenuKey]=useState('');
+  const [expandedClientKey,setExpandedClientKey]=useState('');
+  const [expandedServerId,setExpandedServerId]=useState('');
   const isAggregateServer = activeServerId === 'all';
 
   const handleError=(e)=>{
@@ -334,7 +341,6 @@ function App(){
   const cancelEditClient=()=>{
     setEditingClientKey('');
     setEditingClientName('');
-    setOpenActionMenuKey('');
   };
   const renameClient=async(client)=>{
     const nextName = editingClientName.trim();
@@ -494,6 +500,25 @@ function App(){
     if(age < 900) return {label:t('recent'), className:'warn'};
     return {label:t('offline'), className:'muted'};
   };
+  const clientPeerStat = (client)=>peerStatsByKey[client?.PublicKey] || null;
+  const lastSeenText = (client)=>{
+    const latest = clientPeerStat(client)?.latest;
+    return latest ? formatDateTime(latest, lang) : t('never');
+  };
+  const serverStats = (server)=>{
+    const serverClients = server.id === 'all' ? clients : clients.filter(client=>(client.serverId || 'local') === server.id);
+    const active = serverClients.filter(client=>!client.blocked).length;
+    const created = serverClients.filter(client=>client.createdAt).length;
+    const keys = new Set(serverClients.map(client=>client.PublicKey));
+    const stats = peerStats.filter(peer=>keys.has(peer.publicKey));
+    return {
+      total: serverClients.length,
+      active,
+      created,
+      rx: stats.reduce((sum,peer)=>sum + peer.rx, 0),
+      tx: stats.reduce((sum,peer)=>sum + peer.tx, 0),
+    };
+  };
   const renderClientName=(client)=>{
     const key = clientRowKey(client);
     if (editingClientKey === key) {
@@ -507,18 +532,47 @@ function App(){
   };
   const renderClientActions=(client)=> {
     const key = clientRowKey(client);
-    const closeMenu = () => setOpenActionMenuKey('');
     return <div className="client-actions">
-      <div className="action-menu-wrap">
-        <button className="secondary icon-button" title={t('actions')} onClick={()=>setOpenActionMenuKey(openActionMenuKey === key ? '' : key)}><MoreVertical size={16}/></button>
-        {openActionMenuKey === key && <div className="action-menu">
-          <button className="secondary" onClick={()=>{ closeMenu(); copyClientConfig(client.PublicKey, client.serverId).catch(handleError); }}><Clipboard size={16}/>{t('key')}</button>
-          <button className="secondary" onClick={()=>{ closeMenu(); beginEditClient(client); }}><Pencil size={16}/>{t('editName')}</button>
-          <button className="secondary" onClick={()=>{ closeMenu(); downloadClientConfig(client.PublicKey, client.name||'client', client.serverId).catch(handleError); }}><Download size={16}/>Download</button>
-        </div>}
-      </div>
-      <button className="danger icon-button" title={t('deleteClient')} onClick={()=>remove(client.PublicKey, client.serverId).catch(handleError)}><Trash2 size={16}/></button>
+      <button className="secondary icon-button" title={t('details')} onClick={(event)=>{ event.stopPropagation(); setExpandedClientKey(expandedClientKey === key ? '' : key); }}><ChevronDown className={expandedClientKey === key ? 'rotated' : ''} size={16}/></button>
+      <button className="secondary icon-button" title={t('editName')} onClick={(event)=>{ event.stopPropagation(); beginEditClient(client); }}><Pencil size={16}/></button>
+      <button className="danger icon-button" title={t('deleteClient')} onClick={(event)=>{ event.stopPropagation(); remove(client.PublicKey, client.serverId).catch(handleError); }}><Trash2 size={16}/></button>
     </div>;
+  };
+  const renderClientDetails=(client, colSpan)=>{
+    const stat = clientPeerStat(client);
+    return <tr className="detail-row"><td colSpan={colSpan}>
+      <div className="detail-panel">
+        <div className="detail-grid">
+          <div><span>{t('created')}</span><strong>{formatAnyDate(client.createdAt, lang)}</strong></div>
+          <div><span>{t('lastSeen')}</span><strong>{lastSeenText(client)}</strong></div>
+          <div><span>{t('received')}</span><strong>{formatMb(stat?.rx || 0)}</strong></div>
+          <div><span>{t('sent')}</span><strong>{formatMb(stat?.tx || 0)}</strong></div>
+          <div><span>{t('server')}</span><strong>{clientServerName(client)}</strong></div>
+          <div><span>{t('allowedIps')}</span><strong>{client.AllowedIPs || '—'}</strong></div>
+        </div>
+        <div className="detail-actions">
+          <button className="secondary" onClick={()=>copyClientConfig(client.PublicKey, client.serverId).catch(handleError)}><Clipboard size={16}/>{t('copyConfig')}</button>
+          <button className="secondary" onClick={()=>downloadClientConfig(client.PublicKey, client.name||'client', client.serverId).catch(handleError)}><Download size={16}/>{t('download')}</button>
+        </div>
+        <div className="detail-key mono">{client.PublicKey}</div>
+      </div>
+    </td></tr>;
+  };
+  const renderServerDetails=(server, colSpan)=>{
+    const stats = serverStats(server);
+    return <tr className="detail-row"><td colSpan={colSpan}>
+      <div className="detail-panel server-detail-panel">
+        <div className="detail-grid">
+          <div><span>{t('totalClients')}</span><strong>{stats.total}</strong></div>
+          <div><span>{t('activeClients')}</span><strong>{stats.active}</strong></div>
+          <div><span>{t('createdClients')}</span><strong>{stats.created}</strong></div>
+          <div><span>{t('received')}</span><strong>{formatMb(stats.rx)}</strong></div>
+          <div><span>{t('sent')}</span><strong>{formatMb(stats.tx)}</strong></div>
+          <div><span>{t('status')}</span><strong>{serverConnection(server) ? t('active') : t('inactiveEdit')}</strong></div>
+        </div>
+        <div className="detail-key mono">{server.kind === 'local' || server.id === 'all' ? server.name : server.baseUrl}</div>
+      </div>
+    </td></tr>;
   };
 
   if(checkingSession) return <main className="auth-page"><section className="card login-card"><h1>AmneziaWG Admin</h1><p>{t('checking')}</p></section></main>;
@@ -626,8 +680,8 @@ function App(){
       <section className="card">
         <div className="panel-head"><div><h2>{t('activeClients')}</h2><p>{t('activeClientsSub')}</p></div><span className="badge ok">{activeClientsList.length}</span></div>
         <table className="client-table active-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('created')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {activeClientsList.map(c=>{ const status = clientStatus(c); return <tr key={clientRowKey(c)}>
-            <td>{renderClientName(c)}</td>
+          {activeClientsList.map(c=>{ const key = clientRowKey(c); const status = clientStatus(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
+            <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className={`badge ${status.className}`}>{status.label}</span></td>
             <td>{c.expiresAt ? <span className={`badge ${isExpired(c.expiresAt) ? 'expired' : 'muted'}`}>{formatDate(c.expiresAt, lang)}</span> : <span className="badge admin">{t('admin')}</span>}</td>
@@ -635,15 +689,15 @@ function App(){
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
-          </tr> })}
+          </tr>{expandedClientKey === key && renderClientDetails(c, 8)}</React.Fragment> })}
         </tbody></table>
       </section>
 
       {pendingRenewalClients.length > 0 && <section className="card">
         <div className="panel-head"><div><h2>{t('expiredClients')}</h2><p>{t('expiredClientsSub')}</p></div><span className="badge expired">{pendingRenewalClients.length}</span></div>
         <table className="client-table expired-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('created')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {pendingRenewalClients.map(c=><tr key={clientRowKey(c)}>
-            <td>{renderClientName(c)}</td>
+          {pendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
+            <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
             <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>
@@ -652,7 +706,7 @@ function App(){
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
-          </tr>)}
+          </tr>{expandedClientKey === key && renderClientDetails(c, 9)}</React.Fragment>})}
         </tbody></table>
       </section>}
     </>}
@@ -664,8 +718,8 @@ function App(){
       </section>
       <section className="card">
         <table className="client-table expired-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('created')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {pendingRenewalClients.map(c=><tr key={clientRowKey(c)}>
-            <td>{renderClientName(c)}</td>
+          {pendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
+            <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
             <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>
@@ -674,7 +728,7 @@ function App(){
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
-          </tr>)}
+          </tr>{expandedClientKey === key && renderClientDetails(c, 9)}</React.Fragment>})}
         </tbody></table>
       </section>
     </>}
@@ -746,20 +800,20 @@ function App(){
       </section>}
       <section className="card">
         <table className="server-table"><thead><tr><th>{t('title')}</th><th>{t('endpoint')}</th><th>{t('token')}</th><th>{t('status')}</th><th></th></tr></thead><tbody>
-          <tr className={activeServerId==='all'?'selected-row':''}>
+          {(()=>{ const server = {id:'all', name:t('allServers'), baseUrl:'', kind:'aggregate', status:'online'}; return <React.Fragment key="all"><tr className={`clickable-row ${activeServerId==='all'?'selected-row':''} ${expandedServerId === 'all' ? 'expanded' : ''}`} onClick={()=>setExpandedServerId(expandedServerId === 'all' ? '' : 'all')}>
             <td><strong>{t('allServers')}</strong>{activeServerId==='all' && <small>{t('activeServer')}</small>}</td>
             <td className="mono">—</td>
             <td><span className="badge ok">{t('set')}</span></td>
             <td><span className="badge ok">{t('active')}</span></td>
-            <td className="table-actions"><button className="secondary" onClick={()=>selectServer('all')}>{t('select')}</button></td>
-          </tr>
-          {servers.map(s=><tr key={s.id} className={s.id===activeServerId?'selected-row':''}>
+            <td className="table-actions"><button className="secondary icon-button" title={t('details')} onClick={(event)=>{ event.stopPropagation(); setExpandedServerId(expandedServerId === 'all' ? '' : 'all'); }}><ChevronDown className={expandedServerId === 'all' ? 'rotated' : ''} size={16}/></button><button className="secondary" onClick={(event)=>{ event.stopPropagation(); selectServer('all'); }}>{t('select')}</button></td>
+          </tr>{expandedServerId === 'all' && renderServerDetails(server, 5)}</React.Fragment>; })()}
+          {servers.map(s=><React.Fragment key={s.id}><tr className={`clickable-row ${s.id===activeServerId?'selected-row':''} ${expandedServerId === s.id ? 'expanded' : ''}`} onClick={()=>setExpandedServerId(expandedServerId === s.id ? '' : s.id)}>
             <td><strong>{s.name}</strong>{s.id===activeServerId && <small>{t('activeServer')}</small>}</td>
             <td className="mono">{s.kind === 'local' ? t('localServer') : s.baseUrl}</td>
             <td>{s.kind === 'local' ? <span className="badge ok">{t('set')}</span> : (s.token ? <span className="badge ok">{t('set')}</span> : <span className="badge muted">{t('notSet')}</span>)}</td>
             <td>{serverConnection(s)?<span className="badge ok">{t('active')}</span>:<span className="badge warn">{t('inactiveEdit')}</span>}</td>
-            <td className="table-actions"><button className="secondary" onClick={()=>selectServer(s.id)}>{t('select')}</button><button className="secondary" onClick={()=>editServer(s)}>{t('edit')}</button>{s.id !== 'local' && <button className="danger" onClick={()=>deleteServer(s.id)}><Trash2 size={16}/></button>}</td>
-          </tr>)}
+            <td className="table-actions"><button className="secondary icon-button" title={t('details')} onClick={(event)=>{ event.stopPropagation(); setExpandedServerId(expandedServerId === s.id ? '' : s.id); }}><ChevronDown className={expandedServerId === s.id ? 'rotated' : ''} size={16}/></button><button className="secondary" onClick={(event)=>{ event.stopPropagation(); selectServer(s.id); }}>{t('select')}</button><button className="secondary icon-button" title={t('edit')} onClick={(event)=>{ event.stopPropagation(); editServer(s); }}><Pencil size={16}/></button>{s.id !== 'local' && <button className="danger icon-button" title={t('deleteClient')} onClick={(event)=>{ event.stopPropagation(); deleteServer(s.id); }}><Trash2 size={16}/></button>}</td>
+          </tr>{expandedServerId === s.id && renderServerDetails(s, 5)}</React.Fragment>)}
         </tbody></table>
       </section>
       <section className="card"><h2>{t('dumpTitle')}</h2><pre>{dump||t('noDump')}</pre></section>
