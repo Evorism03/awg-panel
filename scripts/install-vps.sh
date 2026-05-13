@@ -158,6 +158,35 @@ detect_public_ip() {
   hostname -I 2>/dev/null | awk '{print $1}'
 }
 
+detect_awg_config_path() {
+  local container="$1"
+  local iface="${AWG_INTERFACE:-awg0}"
+  if [ -n "${AWG_CONTAINER_CONFIG_PATH:-}" ]; then
+    printf '%s' "$AWG_CONTAINER_CONFIG_PATH"
+    return
+  fi
+  docker exec "$container" sh -lc '
+    iface="$1"
+    for path in \
+      "/opt/amnezia/awg/${iface}.conf" \
+      "/opt/amnezia/amneziawg/${iface}.conf" \
+      "/etc/amnezia/amneziawg/${iface}.conf" \
+      "/etc/wireguard/${iface}.conf" \
+      "/config/${iface}.conf" \
+      "/opt/amnezia/awg/awg0.conf" \
+      "/opt/amnezia/amneziawg/awg0.conf" \
+      "/etc/amnezia/amneziawg/awg0.conf" \
+      "/etc/wireguard/awg0.conf" \
+      "/etc/wireguard/wg0.conf"; do
+      if [ -f "$path" ]; then
+        printf "%s" "$path"
+        exit 0
+      fi
+    done
+    find /opt/amnezia /etc/amnezia /etc/wireguard /config -maxdepth 4 -type f \( -name "*.conf" -o -name "wg*.conf" -o -name "awg*.conf" \) 2>/dev/null | head -n 1
+  ' sh "$iface" 2>/dev/null || true
+}
+
 write_env_if_missing() {
   local env_path="$INSTALL_DIR/.env"
   if [ -f "$env_path" ]; then
@@ -166,12 +195,14 @@ write_env_if_missing() {
     return
   fi
 
-  local awg_container awg_port server_ip admin_token admin_password
+  local awg_container awg_port server_ip awg_config_path admin_token admin_password
   awg_container="$(detect_awg_container)"
   [ -n "$awg_container" ] || fail "Could not detect AmneziaWG container. Run with AWG_DOCKER_CONTAINER=name."
   awg_port="$(detect_udp_port "$awg_container")"
   [ -n "$awg_port" ] || awg_port="${AWG_PORT:-51820}"
   server_ip="$(detect_public_ip)"
+  awg_config_path="$(detect_awg_config_path "$awg_container")"
+  [ -n "$awg_config_path" ] || fail "Could not detect AmneziaWG config in container $awg_container. Run with AWG_CONTAINER_CONFIG_PATH=/path/to/awg0.conf."
   admin_token="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
   admin_password="$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '=')"
 
@@ -185,8 +216,8 @@ MOCK_AWG=false
 AWG_BIN=${AWG_BIN:-awg}
 AWG_CONTAINER_NAME=$awg_container
 AWG_DOCKER_CONTAINER=$awg_container
-AWG_CONFIG_PATH=${AWG_CONFIG_PATH:-/opt/amnezia/awg/awg0.conf}
-AWG_CONTAINER_CONFIG_PATH=${AWG_CONTAINER_CONFIG_PATH:-/opt/amnezia/awg/awg0.conf}
+AWG_CONFIG_PATH=${AWG_CONFIG_PATH:-$awg_config_path}
+AWG_CONTAINER_CONFIG_PATH=$awg_config_path
 CLIENTS_DIR=/data/clients
 SERVER_ENDPOINT=${SERVER_ENDPOINT:-$server_ip:$awg_port}
 CLIENT_DNS=${CLIENT_DNS:-1.1.1.1}
@@ -251,10 +282,19 @@ start_manually() {
 
 healthcheck() {
   log "Checking installation"
-  sleep 2
-  curl -fsS "http://127.0.0.1:$BACKEND_PORT/api/health" >/dev/null || fail "Backend healthcheck failed"
-  docker exec "$BACKEND_CONTAINER" sh -lc 'case "${MOCK_AWG:-false}" in 1|true|yes|on) exit 0;; esac; command -v docker >/dev/null || { echo "docker CLI is missing in backend container" >&2; exit 1; }; test -S /var/run/docker.sock || { echo "/var/run/docker.sock is not mounted as a socket" >&2; exit 1; }; if [ -n "${AWG_DOCKER_CONTAINER:-}" ]; then docker inspect "$AWG_DOCKER_CONTAINER" >/dev/null || { echo "AWG container is not visible: $AWG_DOCKER_CONTAINER" >&2; exit 1; }; fi' \
-    || fail "Backend cannot access Docker. Rebuild backend image, check /var/run/docker.sock mount, and AWG_DOCKER_CONTAINER."
+  local attempt
+  for attempt in $(seq 1 30); do
+    if curl -fsS "http://127.0.0.1:$BACKEND_PORT/api/health" >/dev/null; then
+      break
+    fi
+    if [ "$attempt" = "30" ]; then
+      docker logs --tail 80 "$BACKEND_CONTAINER" >&2 || true
+      fail "Backend healthcheck failed"
+    fi
+    sleep 1
+  done
+  docker exec "$BACKEND_CONTAINER" sh -lc 'case "${MOCK_AWG:-false}" in 1|true|yes|on) exit 0;; esac; command -v docker >/dev/null || { echo "docker CLI is missing in backend container" >&2; exit 1; }; test -S /var/run/docker.sock || { echo "/var/run/docker.sock is not mounted as a socket" >&2; exit 1; }; if [ -n "${AWG_DOCKER_CONTAINER:-}" ]; then docker inspect "$AWG_DOCKER_CONTAINER" >/dev/null || { echo "AWG container is not visible: $AWG_DOCKER_CONTAINER" >&2; exit 1; }; docker exec "$AWG_DOCKER_CONTAINER" test -f "$AWG_CONTAINER_CONFIG_PATH" || { echo "AWG config is not visible: $AWG_DOCKER_CONTAINER:$AWG_CONTAINER_CONFIG_PATH" >&2; exit 1; }; fi' \
+    || fail "Backend cannot access Docker or AmneziaWG config. Rebuild backend image, check /var/run/docker.sock mount, AWG_DOCKER_CONTAINER, and AWG_CONTAINER_CONFIG_PATH."
   if frontend_enabled; then
     curl -fsSI "http://127.0.0.1:$PANEL_HTTP_PORT" >/dev/null || fail "Frontend healthcheck failed"
   fi

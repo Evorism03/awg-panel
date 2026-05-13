@@ -30,7 +30,7 @@ const dict = {
   ru: {
     today:'Сегодня', admin:'Админ', oneDay:'1 день', threeDays:'3 дня', sevenDays:'7 дней', fifteenDays:'15 дней', oneMonth:'1 месяц', threeMonths:'3 месяца', sixMonths:'6 месяцев', oneYear:'1 год',
     online:'Онлайн', offline:'Оффлайн', recent:'Недавно', renewalPending:'Ожидает продления', checking:'Проверка сессии', signInTitle:'Вход в панель управления', login:'Логин', password:'Пароль', signIn:'Войти',
-    noServer:'Сервер не выбран', noEndpoint:'endpoint не задан', refresh:'Обновить', refreshing:'Обновление', logout:'Выйти', home:'Главная', clients:'Клиенты', expired:'Просроченные', orders:'Заказы', servers:'Серверы', localServer:'Локальный сервер',
+    noServer:'Сервер не выбран', noEndpoint:'endpoint не задан', refresh:'Обновить', refreshing:'Обновление', logout:'Выйти', home:'Главная', clients:'Клиенты', expired:'Просроченные', orders:'Заказы', servers:'Серверы', localServer:'Локальный сервер', allServers:'Все серверы',
     totalClients:'Всего клиентов', activeClients:'Активные клиенты', expiredClients:'Просроченные клиенты', serversActive:'Серверы / активные', activeUsers:'Активные пользователи', maxOnline:'Максимум онлайн-клиентов по дням', now:'Сейчас',
     traffic:'Трафик', rx:'Прием данных', tx:'Отдача данных', peersDump:'Peers в dump', clientsSub:'Создание, выдача и скачивание конфигов для выбранного сервера',
     importConf:'Импорт .conf', createClient:'Создать клиента', importTitle:'Импорт Amnezia-конфига', close:'Закрыть', clientName:'Имя клиента', readyConf:'Готовый .conf',
@@ -47,7 +47,7 @@ const dict = {
   en: {
     today:'Today', admin:'Admin', oneDay:'1 day', threeDays:'3 days', sevenDays:'7 days', fifteenDays:'15 days', oneMonth:'1 month', threeMonths:'3 months', sixMonths:'6 months', oneYear:'1 year',
     online:'Online', offline:'Offline', recent:'Recent', renewalPending:'Awaiting renewal', checking:'Checking session', signInTitle:'Admin panel sign in', login:'Login', password:'Password', signIn:'Sign in',
-    noServer:'No server selected', noEndpoint:'endpoint not set', refresh:'Refresh', refreshing:'Refreshing', logout:'Log out', home:'Home', clients:'Clients', expired:'Expired', orders:'Orders', servers:'Servers', localServer:'Local server',
+    noServer:'No server selected', noEndpoint:'endpoint not set', refresh:'Refresh', refreshing:'Refreshing', logout:'Log out', home:'Home', clients:'Clients', expired:'Expired', orders:'Orders', servers:'Servers', localServer:'Local server', allServers:'All servers',
     totalClients:'Total clients', activeClients:'Active clients', expiredClients:'Expired clients', serversActive:'Servers / active', activeUsers:'Active users', maxOnline:'Max online clients by day', now:'Now',
     traffic:'Traffic', rx:'Received', tx:'Sent', peersDump:'Peers in dump', clientsSub:'Create, issue, and download configs for the selected server',
     importConf:'Import .conf', createClient:'Create client', importTitle:'Import Amnezia config', close:'Close', clientName:'Client name', readyConf:'Ready .conf',
@@ -176,6 +176,7 @@ function App(){
   const [activityHistory,setActivityHistory]=useState(()=>JSON.parse(localStorage.getItem('dailyActivityHistory')||'[]'));
   const [lastConfig,setLastConfig]=useState('');
   const [error,setError]=useState('');
+  const isAggregateServer = activeServerId === 'all';
 
   const handleError=(e)=>{
     const message = e.message === 'Unauthorized' ? t('wrongAuth') : e.message;
@@ -192,6 +193,7 @@ function App(){
     const j=await r.json();
     const next = j.servers || [];
     setServers(next);
+    if (activeServerId === 'all') return 'all';
     if (!next.some(server=>server.id===activeServerId)) {
       const first = next[0]?.id || 'local';
       setActiveServerId(first);
@@ -297,10 +299,10 @@ function App(){
     await copyText(j.config, t('configSavedCopied')).catch(()=>setNotice(t('configSaved')));
   };
 
-  const remove=async(pk)=>{
+  const remove=async(pk, serverId=activeServerId)=>{
     if(!confirm(t('deleteClient'))) return;
     const savedConfig = clientConfigs[pk];
-    const query = activeServerId ? `?server_id=${encodeURIComponent(activeServerId)}` : '';
+    const query = serverId ? `?server_id=${encodeURIComponent(serverId)}` : '';
     await api('/api/clients/'+encodeURIComponent(pk)+query,{method:'DELETE'});
     if (savedConfig) {
       const next = {...clientConfigs};
@@ -349,7 +351,7 @@ function App(){
     setServerName(''); setServerBaseUrl(''); setServerToken(''); setShowServerForm(false);
     setEditingServerId(null);
   };
-  const selectServer=(id)=>{ setActiveServerId(id); setClientServerId(id); localStorage.setItem('activeServerId',id); if(id) loadClients(id).catch(handleError); };
+  const selectServer=(id)=>{ setActiveServerId(id); if (id !== 'all') setClientServerId(id); localStorage.setItem('activeServerId',id); if(id) loadClients(id).catch(handleError); };
   const editServer=(server)=>{
     setEditingServerId(server.id);
     setServerName(server.name);
@@ -367,7 +369,7 @@ function App(){
   const deleteServer=(id)=>{
     if(id === 'local') return;
     api('/api/servers/'+encodeURIComponent(id),{method:'DELETE'})
-      .then(async()=>{ const next = await loadServers(); if(activeServerId===id) selectServer(next); })
+      .then(async()=>{ const next = await loadServers(); if(activeServerId===id) selectServer(next[0]?.id || 'local'); })
       .catch(handleError);
   };
   const saveOrders=(next)=>{ setOrders(next); localStorage.setItem('orders',JSON.stringify(next)); };
@@ -390,8 +392,16 @@ function App(){
     ['server',t('servers'),Server],
   ];
   const authed = isLoggedIn;
-  const activeServer = servers.find(s=>s.id===activeServerId) || servers[0] || {id:'local', name:'Current panel', baseUrl:'local', status:'online'};
-  const serverConnection = (server)=>Boolean(server) && (server.id === 'local' || server.status === 'online');
+  const activeServer = isAggregateServer
+    ? {id:'all', name:t('allServers'), baseUrl:'', kind:'aggregate', status:'online'}
+    : servers.find(s=>s.id===activeServerId) || servers[0] || {id:'local', name:'Current panel', baseUrl:'local', status:'online'};
+  const serverConnection = (server)=>Boolean(server) && (server.id === 'local' || server.id === 'all' || server.status === 'online');
+  const serverNameById = (serverId)=>{
+    if (serverId === 'all') return t('allServers');
+    if (serverId === 'local') return t('localServer');
+    return servers.find(server=>server.id===serverId)?.name || serverId || '—';
+  };
+  const clientServerName = (client)=>client.serverName || serverNameById(client.serverId);
   const activeClientsList = clients.filter(client=>!client.blocked);
   const pendingRenewalClients = clients.filter(client=>client.blocked || ['not_renewed','renewal_pending'].includes(client.status));
   const peerStats = parsePeerStats(dump);
@@ -409,9 +419,11 @@ function App(){
 
   useEffect(()=>{
     if (!isLoggedIn || !servers.length) return;
+    if (activeServerId === 'all') return;
     if (!servers.some(server=>server.id===activeServerId)) {
       const next = servers[0].id;
       setActiveServerId(next);
+      setClientServerId(next);
       localStorage.setItem('activeServerId', next);
       loadClients(next).catch(handleError);
     }
@@ -435,12 +447,16 @@ function App(){
     if(!isLoggedIn) return;
     const timer = setInterval(()=>load().catch(handleError), 5000);
     return ()=>clearInterval(timer);
-  },[isLoggedIn]);
+  },[isLoggedIn, activeServerId]);
 
-  const clientStatus = (publicKey)=>{
-    const client = clients.find(item=>item.PublicKey === publicKey);
-    if (client?.blocked) return {label:t('renewalPending'), className:'expired'};
-    const stat = peerStatsByKey[publicKey];
+  const clientStatus = (client)=>{
+    const publicKey = client?.PublicKey;
+    const sourceServerId = client?.serverId;
+    const sourcePublicKey = client?.PublicKey;
+    const matchedClient = clients.find(item=>item.PublicKey === publicKey && (!sourceServerId || item.serverId === sourceServerId));
+    const resolved = matchedClient || client;
+    const stat = peerStatsByKey[sourcePublicKey];
+    if (resolved?.blocked) return {label:t('renewalPending'), className:'expired'};
     if(!stat?.latest) return {label:t('offline'), className:'muted'};
     const age = nowSeconds - stat.latest;
     if(age < 60) return {label:t('online'), className:'ok'};
@@ -466,7 +482,7 @@ function App(){
 
   return <main>
     <header className="topbar">
-      <div><h1>AmneziaWG Admin</h1><p>{activeServer?.name || t('noServer')} · {activeServer?.kind === 'local' ? t('localServer') : (activeServer?.baseUrl || t('noEndpoint'))}</p></div>
+      <div><h1>AmneziaWG Admin</h1><p>{activeServer?.name || t('noServer')} · {activeServer?.kind === 'local' ? t('localServer') : activeServer?.kind === 'aggregate' ? t('allServers') : (activeServer?.baseUrl || t('noEndpoint'))}</p></div>
       <div className="actions">
         <div className="language-switch"><button className={lang==='ru'?'active secondary':'secondary'} onClick={()=>setLanguage('ru')}>RU</button><button className={lang==='en'?'active secondary':'secondary'} onClick={()=>setLanguage('en')}>EN</button></div>
         <button disabled={isRefreshing} onClick={()=>load({manual:true}).catch(handleError)}><RefreshCw size={16}/>{isRefreshing?t('refreshing'):t('refresh')}</button>
@@ -503,10 +519,11 @@ function App(){
       </section>
     </>}
 
-    {view==='clients' && <>
+      {view==='clients' && <>
       <section className="section-head">
         <div><h2>{t('clients')}</h2><p>{t('clientsSub')}</p></div>
         <div className="actions">
+          <button className={activeServerId==='all'?'secondary active':'secondary'} onClick={()=>selectServer('all')}>{t('allServers')}</button>
           <button className="secondary" onClick={()=>setShowImportForm(true)}><Upload size={16}/>{t('importConf')}</button>
           <button onClick={()=>setShowClientForm(true)}><Plus size={16}/>{t('createClient')}</button>
         </div>
@@ -552,17 +569,17 @@ function App(){
       <section className="card">
         <div className="panel-head"><div><h2>{t('activeClients')}</h2><p>{t('activeClientsSub')}</p></div><span className="badge ok">{activeClientsList.length}</span></div>
         <table><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {activeClientsList.map(c=>{ const status = clientStatus(c.PublicKey); return <tr key={c.PublicKey}>
+          {activeClientsList.map(c=>{ const status = clientStatus(c); return <tr key={`${c.serverId || 'local'}:${c.PublicKey}`}>
             <td>{c.name||'—'}</td>
-            <td>{activeServer?.name || '—'}</td>
+            <td>{clientServerName(c)}</td>
             <td><span className={`badge ${status.className}`}>{status.label}</span></td>
             <td>{c.expiresAt ? <span className={`badge ${isExpired(c.expiresAt) ? 'expired' : 'muted'}`}>{formatDate(c.expiresAt, lang)}</span> : <span className="badge admin">{t('admin')}</span>}</td>
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">
-              <button className="secondary" onClick={()=>copyClientConfig(c.PublicKey).catch(handleError)}>{t('key')}</button>
-              <button className="secondary" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client').catch(handleError)}><Download size={16}/></button>
-              <button className="danger" onClick={()=>remove(c.PublicKey).catch(handleError)}><Trash2 size={16}/></button>
+              <button className="secondary" onClick={()=>copyClientConfig(c.PublicKey, c.serverId).catch(handleError)}>{t('key')}</button>
+              <button className="secondary" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client', c.serverId).catch(handleError)}><Download size={16}/></button>
+              <button className="danger" onClick={()=>remove(c.PublicKey, c.serverId).catch(handleError)}><Trash2 size={16}/></button>
             </td>
           </tr> })}
         </tbody></table>
@@ -571,7 +588,7 @@ function App(){
       {pendingRenewalClients.length > 0 && <section className="card">
         <div className="panel-head"><div><h2>{t('expiredClients')}</h2><p>{t('expiredClientsSub')}</p></div><span className="badge expired">{pendingRenewalClients.length}</span></div>
         <table><thead><tr><th>{t('name')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {pendingRenewalClients.map(c=><tr key={c.PublicKey}>
+          {pendingRenewalClients.map(c=><tr key={`${c.serverId || 'local'}:${c.PublicKey}`}>
             <td>{c.name||'—'}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
             <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>
@@ -579,9 +596,9 @@ function App(){
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">
-              <button className="secondary" onClick={()=>copyClientConfig(c.PublicKey).catch(handleError)}>{t('key')}</button>
-              <button className="secondary" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client').catch(handleError)}><Download size={16}/></button>
-              <button className="danger" onClick={()=>remove(c.PublicKey).catch(handleError)}><Trash2 size={16}/></button>
+              <button className="secondary" onClick={()=>copyClientConfig(c.PublicKey, c.serverId).catch(handleError)}>{t('key')}</button>
+              <button className="secondary" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client', c.serverId).catch(handleError)}><Download size={16}/></button>
+              <button className="danger" onClick={()=>remove(c.PublicKey, c.serverId).catch(handleError)}><Trash2 size={16}/></button>
             </td>
           </tr>)}
         </tbody></table>
@@ -594,18 +611,19 @@ function App(){
         <span className="badge expired">{pendingRenewalClients.length}</span>
       </section>
       <section className="card">
-        <table><thead><tr><th>{t('name')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {pendingRenewalClients.map(c=><tr key={c.PublicKey}>
+        <table><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+          {pendingRenewalClients.map(c=><tr key={`${c.serverId || 'local'}:${c.PublicKey}`}>
             <td>{c.name||'—'}</td>
+            <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
             <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>
             <td>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">
-              <button className="secondary" onClick={()=>copyClientConfig(c.PublicKey).catch(handleError)}>{t('key')}</button>
-              <button className="secondary" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client').catch(handleError)}><Download size={16}/></button>
-              <button className="danger" onClick={()=>remove(c.PublicKey).catch(handleError)}><Trash2 size={16}/></button>
+              <button className="secondary" onClick={()=>copyClientConfig(c.PublicKey, c.serverId).catch(handleError)}>{t('key')}</button>
+              <button className="secondary" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client', c.serverId).catch(handleError)}><Download size={16}/></button>
+              <button className="danger" onClick={()=>remove(c.PublicKey, c.serverId).catch(handleError)}><Trash2 size={16}/></button>
             </td>
           </tr>)}
         </tbody></table>
@@ -660,7 +678,10 @@ function App(){
     {view==='server' && <>
       <section className="section-head">
         <div><h2>{t('servers')}</h2><p>{t('serversSub')}</p></div>
-        <button onClick={()=>setShowServerForm(true)}><Plus size={16}/>{t('addServer')}</button>
+        <div className="actions">
+          <button className={activeServerId==='all'?'secondary active':'secondary'} onClick={()=>selectServer('all')}>{t('allServers')}</button>
+          <button onClick={()=>setShowServerForm(true)}><Plus size={16}/>{t('addServer')}</button>
+        </div>
       </section>
       {showServerForm && <section className="card add-panel">
         <div className="panel-head">
@@ -676,6 +697,13 @@ function App(){
       </section>}
       <section className="card">
         <table className="server-table"><thead><tr><th>{t('title')}</th><th>{t('endpoint')}</th><th>{t('token')}</th><th>{t('status')}</th><th></th></tr></thead><tbody>
+          <tr className={activeServerId==='all'?'selected-row':''}>
+            <td><strong>{t('allServers')}</strong>{activeServerId==='all' && <small>{t('activeServer')}</small>}</td>
+            <td className="mono">—</td>
+            <td><span className="badge ok">{t('set')}</span></td>
+            <td><span className="badge ok">{t('active')}</span></td>
+            <td className="table-actions"><button className="secondary" onClick={()=>selectServer('all')}>{t('select')}</button></td>
+          </tr>
           {servers.map(s=><tr key={s.id} className={s.id===activeServerId?'selected-row':''}>
             <td><strong>{s.name}</strong>{s.id===activeServerId && <small>{t('activeServer')}</small>}</td>
             <td className="mono">{s.kind === 'local' ? t('localServer') : s.baseUrl}</td>

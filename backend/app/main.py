@@ -247,6 +247,13 @@ def local_server_identity() -> dict:
     }
 
 
+def attach_client_source(clients: list[dict], server_id: str, server_name: str) -> list[dict]:
+    for client in clients:
+        client["serverId"] = server_id
+        client["serverName"] = server_name
+    return clients
+
+
 def probe_panel(server: dict) -> str:
     try:
         req = urllib.request.Request(f"{server['baseUrl'].rstrip('/')}/api/health", method="GET")
@@ -270,9 +277,81 @@ def list_servers(include_local: bool = True) -> list[dict]:
     return result
 
 
+def local_clients_payload() -> dict:
+    expired_clients = attach_client_source(enforce_expired_clients(), LOCAL_SERVER_ID, LOCAL_SERVER_NAME)
+    peers = attach_client_source(parse_peers(read_cfg()), LOCAL_SERVER_ID, LOCAL_SERVER_NAME)
+    for peer in peers:
+        peer["blocked"] = False
+        peer["status"] = "active"
+    dump = ""
+    try:
+        dump = awg(["show", AWG_INTERFACE, "dump"])
+    except Exception:
+        pass
+    return {
+        "clients": peers + expired_clients,
+        "expiredClientsPath": expired_clients_path(),
+        "dump": dump,
+        "serverId": LOCAL_SERVER_ID,
+        "serverName": LOCAL_SERVER_NAME,
+    }
+
+
+def remote_clients_payload(server: dict) -> dict:
+    payload = panel_json(server, "GET", "/clients")
+    server_id = server.get("id", "")
+    server_name = server.get("name", "")
+    clients = payload.get("clients", [])
+    attach_client_source(clients, server_id, server_name)
+    payload["clients"] = clients
+    payload["serverId"] = server_id
+    payload["serverName"] = server_name
+    return payload
+
+
+def aggregate_clients_payload() -> dict:
+    merged_clients = []
+    merged_dumps = []
+    local_payload = local_clients_payload()
+    merged_clients.extend(local_payload.get("clients", []))
+    if local_payload.get("dump"):
+        merged_dumps.append(f"# {LOCAL_SERVER_NAME}\n{local_payload['dump']}")
+    for server in load_servers():
+        try:
+            payload = remote_clients_payload(server)
+        except Exception:
+            continue
+        merged_clients.extend(payload.get("clients", []))
+        dump = payload.get("dump", "")
+        if dump:
+            merged_dumps.append(f"# {payload.get('serverName') or server.get('name', '')}\n{dump}")
+    return {
+        "clients": merged_clients,
+        "expiredClientsPath": expired_clients_path(),
+        "dump": "\n\n".join(merged_dumps),
+        "serverId": "all",
+        "serverName": "All servers",
+    }
+
+
+def aggregate_expired_clients_payload() -> dict:
+    merged_clients = []
+    merged_clients.extend(local_clients_payload().get("clients", []))
+    for server in load_servers():
+        try:
+            payload = remote_clients_payload(server)
+        except Exception:
+            continue
+        merged_clients.extend(payload.get("clients", []))
+    expired = [client for client in merged_clients if client.get("blocked") or client.get("status") in {"not_renewed", "renewal_pending"}]
+    return {"clients": expired, "path": expired_clients_path(), "serverId": "all", "serverName": "All servers"}
+
+
 def get_server(server_id: str | None) -> dict | None:
     if not server_id or server_id == LOCAL_SERVER_ID:
         return None
+    if server_id == "all":
+        raise HTTPException(status_code=400, detail="Server id 'all' cannot be used for single-server operations")
     for server in load_servers():
         if server.get("id") == server_id:
             return server
@@ -600,20 +679,12 @@ def clients(
     server_id: str | None = Query(None),
 ):
     auth(authorization, awg_panel_session)
+    if server_id == "all":
+        return aggregate_clients_payload()
     server = get_server(server_id)
     if server is not None:
         return panel_json(server, "GET", "/clients")
-    expired_clients = enforce_expired_clients()
-    peers = parse_peers(read_cfg())
-    for peer in peers:
-        peer["blocked"] = False
-        peer["status"] = "active"
-    dump = ""
-    try:
-        dump = awg(["show", AWG_INTERFACE, "dump"])
-    except Exception:
-        pass
-    return {"clients": peers + expired_clients, "expiredClientsPath": expired_clients_path(), "dump": dump}
+    return local_clients_payload()
 
 
 @app.get("/api/expired-clients")
@@ -623,6 +694,8 @@ def expired_clients(
     server_id: str | None = Query(None),
 ):
     auth(authorization, awg_panel_session)
+    if server_id == "all":
+        return aggregate_expired_clients_payload()
     server = get_server(server_id)
     if server is not None:
         return panel_json(server, "GET", "/expired-clients")

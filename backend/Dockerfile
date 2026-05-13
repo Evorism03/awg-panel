@@ -2,7 +2,7 @@ FROM python:3.12-slim
 WORKDIR /app
 ARG DOCKER_CLI_VERSION=27.5.1
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends wireguard-tools sudo ca-certificates curl \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends wireguard-tools sudo ca-certificates curl \
     && docker_arch="$(dpkg --print-architecture)" \
     && case "$docker_arch" in \
       amd64) docker_arch="x86_64" ;; \
