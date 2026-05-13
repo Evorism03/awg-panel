@@ -476,8 +476,6 @@ function App(){
   const allServerTotalRx = allServerPeerStats.reduce((sum,peer)=>sum + peer.rx, 0);
   const allServerTotalTx = allServerPeerStats.reduce((sum,peer)=>sum + peer.tx, 0);
   const activeServerCount = servers.filter(server=>server.status === 'online').length;
-  const sortedActiveClients = sortClients(activeClientsList);
-  const sortedPendingRenewalClients = sortClients(pendingRenewalClients);
   const editingLocalServer = editingServerId === 'local';
   const orderCounts = orderStatuses.reduce((counts,[status])=>({
     ...counts,
@@ -590,6 +588,8 @@ function App(){
     if (clientSortField !== field) return <ArrowUpDown size={14} />;
     return clientSortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />;
   };
+  const sortedActiveClients = sortClients(activeClientsList);
+  const sortedPendingRenewalClients = sortClients(pendingRenewalClients);
   const serverStats = (server)=>{
     const serverClients = server.id === 'all' ? allServerStatsClients : allServerStatsClients.filter(client=>(client.serverId || 'local') === server.id);
     const active = serverClients.filter(client=>!client.blocked).length;
