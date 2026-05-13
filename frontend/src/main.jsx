@@ -1299,7 +1299,7 @@ function App(){
         </div>
         {orders.length === 0
           ? <p style={{padding:'12px 0',color:'var(--muted)'}}>{t('noOrders')}</p>
-          : <table className="orders-table">
+          : <div className="table-wrap"><table className="orders-table">
               <thead><tr>
                 <th>{t('orderLogin')}</th>
                 <th>{t('orderEmail')}</th>
@@ -1341,7 +1341,7 @@ function App(){
                   </React.Fragment>;
                 })}
               </tbody>
-            </table>
+            </table></div>
         }
       </section>
     </>}
