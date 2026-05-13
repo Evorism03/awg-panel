@@ -43,7 +43,7 @@ const dict = {
     totalClients:'Всего клиентов', activeClients:'Активные клиенты', expiredClients:'Просроченные клиенты', serversActive:'Серверы / активные', activeUsers:'Активные пользователи', maxOnline:'Максимум онлайн-клиентов по дням', now:'Сейчас',
     traffic:'Трафик', rx:'Прием данных', tx:'Отдача данных', peersDump:'Peers в dump', clientsSub:'Создание, выдача и скачивание конфигов для выбранного сервера',
     importConf:'Импорт .conf', createClient:'Создать клиента', importTitle:'Импорт Amnezia-конфига', close:'Закрыть', clientName:'Имя клиента', readyConf:'Готовый .conf',
-    saveCopy:'Сохранить и скопировать config', server:'Сервер', term:'Срок', createIssue:'Создать и выдать config', issuedConf:'Выданный конфиг', name:'Имя', status:'Статус', limit:'Лимит',
+    saveCopy:'Сохранить и скопировать config', server:'Сервер', term:'Срок', createIssue:'Создать и выдать config', issuedConf:'Выданный конфиг', name:'Имя', status:'Статус', limit:'Лимит', sync:'Синхронизировать', syncing:'Синхронизация', synced:'Синхронизировано', skipped:'пропущено',
     expires:'Окончание', publicKey:'Публичный ключ', allowedIps:'Разрешенные IP', key:'Ключ', actions:'Действия', activeClientsSub:'Клиенты с действующей подпиской и активным peer в конфиге.', expiredClientsSub:'Клиенты, которые не продлили подписку. Они заблокированы и хранятся отдельно.', blockedAt:'Заблокирован',
     deleteClient:'Удалить клиента?', copied:'Скопировано', noCopyData:'Нет данных для копирования', serverUnavailable:'Выбранный сервер недоступен. Выбери активный сервер или отредактируй подключение.',
     dataUpdated:'Данные обновлены', configCreatedCopied:'Конфиг создан и скопирован', configCreated:'Конфиг создан', configSavedCopied:'Конфиг сохранен и скопирован', configSaved:'Конфиг сохранен',
@@ -70,7 +70,7 @@ const dict = {
     totalClients:'Total clients', activeClients:'Active clients', expiredClients:'Expired clients', serversActive:'Servers / active', activeUsers:'Active users', maxOnline:'Max online clients by day', now:'Now',
     traffic:'Traffic', rx:'Received', tx:'Sent', peersDump:'Peers in dump', clientsSub:'Create, issue, and download configs for the selected server',
     importConf:'Import .conf', createClient:'Create client', importTitle:'Import Amnezia config', close:'Close', clientName:'Client name', readyConf:'Ready .conf',
-    saveCopy:'Save and copy config', server:'Server', term:'Term', createIssue:'Create and issue config', issuedConf:'Issued config', name:'Name', status:'Status', limit:'Limit',
+    saveCopy:'Save and copy config', server:'Server', term:'Term', createIssue:'Create and issue config', issuedConf:'Issued config', name:'Name', status:'Status', limit:'Limit', sync:'Sync', syncing:'Syncing', synced:'Synced', skipped:'skipped',
     expires:'Expires', publicKey:'Public key', allowedIps:'Allowed IPs', key:'Key', actions:'Actions', activeClientsSub:'Clients with an active subscription and peer in the config.', expiredClientsSub:'Clients who did not renew. They are blocked and stored separately.', blockedAt:'Blocked',
     deleteClient:'Delete client?', copied:'Copied', noCopyData:'No data to copy', serverUnavailable:'Selected server is unavailable. Select an active server or edit the connection.',
     dataUpdated:'Data updated', configCreatedCopied:'Config created and copied', configCreated:'Config created', configSavedCopied:'Config saved and copied', configSaved:'Config saved',
@@ -231,6 +231,7 @@ function App(){
   const [activityHistory,setActivityHistory]=useState(()=>JSON.parse(localStorage.getItem('dailyActivityHistory')||'[]'));
   const [lastConfig,setLastConfig]=useState('');
   const [error,setError]=useState('');
+  const [isSyncing,setIsSyncing]=useState(false);
   const [editingClientKey,setEditingClientKey]=useState('');
   const [editingClientName,setEditingClientName]=useState('');
   const [expandedClientKey,setExpandedClientKey]=useState('');
@@ -570,6 +571,31 @@ function App(){
     const r = await api('/api/orders');
     const j = await r.json();
     setOrders((j.orders || []).map(normalizeOrder));
+  };
+  const syncCurrent = async (serverId = activeServerId) => {
+    if (!isAdminRoute || !isLoggedIn) return;
+    setIsSyncing(true);
+    try {
+      const query = serverId ? `?server_id=${encodeURIComponent(serverId)}` : '';
+      const r = await api(`/api/sync${query}`, {method:'POST'});
+      const result = await r.json().catch(()=>null);
+      await load().catch(handleError);
+      const localSync = result?.sync || result?.local?.sync;
+      const skipped = Number(localSync?.skippedClientsTableOnly || 0);
+      const syncedCount = Number(result?.synced || result?.local?.synced || 0);
+      setNotice(skipped ? `${t('synced')}: ${syncedCount}, ${t('skipped')}: ${skipped}` : `${t('synced')}: ${syncedCount}`);
+      setTimeout(()=>setNotice(''), 2500);
+    } catch (error) {
+      if (error.status === 404) {
+        await load().catch(handleError);
+        setNotice(t('staleData'));
+        setTimeout(()=>setNotice(''), 2500);
+        return;
+      }
+      throw error;
+    } finally {
+      setIsSyncing(false);
+    }
   };
   const saveOrders = (next) => setOrders(next.map(normalizeOrder));
   const addOrder = async () => {
@@ -1259,6 +1285,7 @@ function App(){
         <div><h2>{t('servers')}</h2><p>{t('serversSub')}</p></div>
         <div className="actions">
           <button className={activeServerId==='all'?'secondary active':'secondary'} onClick={()=>selectServer('all')}>{t('allServers')}</button>
+          <button className="secondary" disabled={isSyncing} onClick={()=>syncCurrent(activeServerId).catch(handleError)}><RefreshCw size={16}/>{isSyncing ? t('syncing') : t('sync')}</button>
           <button onClick={()=>setShowServerForm(true)}><Plus size={16}/>{t('addServer')}</button>
         </div>
       </section>

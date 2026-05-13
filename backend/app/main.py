@@ -371,6 +371,61 @@ def local_clients_payload() -> dict:
     }
 
 
+def sync_local_clients() -> dict:
+    with data_lock:
+        enforce_expired_clients()
+        text = read_cfg()
+        peers = parse_peers(text)
+        table_data = client_table_load()
+        table_entries = client_table_entries(table_data)
+        table_to_awg_synced = 0
+        table_to_awg_skipped = 0
+        awg_to_table_synced = 0
+
+        for peer in peers:
+            public_key = peer.get("PublicKey", "").strip()
+            if not public_key:
+                continue
+            if client_table_find_entry(table_entries, public_key, peer.get("AllowedIPs", "")):
+                continue
+            client_table_upsert(
+                public_key,
+                peer.get("name", "").strip() or public_key,
+                peer.get("AllowedIPs", "").strip(),
+            )
+            awg_to_table_synced += 1
+
+        table_data = client_table_load()
+        table_entries = client_table_entries(table_data)
+        peer_keys = {peer.get("PublicKey", "").strip() for peer in peers if peer.get("PublicKey", "").strip()}
+        next_text = text.rstrip()
+        for entry in table_entries:
+            peer = client_table_entry_peer(entry)
+            public_key = peer.get("PublicKey", "").strip()
+            if not public_key or public_key in peer_keys:
+                continue
+            block = peer_block_from_table_entry(entry)
+            if block is None:
+                table_to_awg_skipped += 1
+                continue
+            next_text += block
+            peer_keys.add(public_key)
+            table_to_awg_synced += 1
+
+        if next_text != text.rstrip():
+            write_cfg(next_text)
+            reload_service()
+
+        payload = local_clients_payload()
+        payload["synced"] = awg_to_table_synced + table_to_awg_synced
+        payload["sync"] = {
+            "awgToClientsTable": awg_to_table_synced,
+            "clientsTableToAwg": table_to_awg_synced,
+            "skippedClientsTableOnly": table_to_awg_skipped,
+        }
+        return payload
+
+
 def remote_clients_payload(server: dict) -> dict:
     payload = panel_json(server, "GET", "/clients")
     server_id = server.get("id", "")
@@ -650,6 +705,12 @@ CLIENT_TABLE_ADDRESS_FIELDS = [
     "ip",
     "clientIp",
 ]
+CLIENT_TABLE_PRESHARED_KEY_FIELDS = [
+    "PresharedKey",
+    "presharedKey",
+    "preshared_key",
+    "psk",
+]
 CLIENT_TABLE_CREATED_FIELDS = [
     "createdAt",
     "created_at",
@@ -757,36 +818,98 @@ def client_table_address_matches(entry: dict, allowed_ips: str) -> bool:
     return bool(target_ips and entry_ips and target_ips & entry_ips)
 
 
+def normalize_allowed_ips(value: str) -> str:
+    parts = []
+    for part in (value or "").split(","):
+        item = part.strip()
+        if not item:
+            continue
+        if "/" not in item:
+            item = f"{item}/32"
+        parts.append(item)
+    return ", ".join(parts)
+
+
+def client_table_entry_matches(entry: dict, public_key: str, allowed_ips: str = "") -> bool:
+    if not isinstance(entry, dict):
+        return False
+    entry_public_key = client_table_value(entry, CLIENT_TABLE_PUBLIC_KEY_FIELDS)
+    if entry_public_key:
+        return entry_public_key == public_key
+    return client_table_address_matches(entry, allowed_ips)
+
+
+def client_table_find_entry(entries: list[dict], public_key: str, allowed_ips: str = "") -> dict | None:
+    for entry in entries:
+        if client_table_entry_matches(entry, public_key, allowed_ips):
+            return entry
+    return None
+
+
+def client_table_entry_peer(entry: dict) -> dict:
+    public_key = client_table_value(entry, CLIENT_TABLE_PUBLIC_KEY_FIELDS)
+    allowed_ips = normalize_allowed_ips(client_table_value(entry, CLIENT_TABLE_ADDRESS_FIELDS))
+    psk = client_table_value(entry, CLIENT_TABLE_PRESHARED_KEY_FIELDS)
+    name = client_table_value(entry, CLIENT_TABLE_NAME_FIELDS) or entry.get(CLIENT_TABLE_OUTER_KEY_FIELD, "").strip()
+    if public_key and (not allowed_ips or not psk):
+        cfg = load_client_export(public_key)
+        if cfg:
+            try:
+                interface, peer, _, _ = client_config_for_amnezia(cfg)
+                allowed_ips = allowed_ips or normalize_allowed_ips(interface.get("Address", ""))
+                psk = psk or peer.get("PresharedKey", "").strip()
+                name = name or client_name_from_config(cfg)
+            except Exception:
+                pass
+    return {
+        "PublicKey": public_key,
+        "PresharedKey": psk,
+        "AllowedIPs": allowed_ips,
+        "name": name or public_key,
+        "createdAt": client_table_value(entry, CLIENT_TABLE_CREATED_FIELDS),
+    }
+
+
+def peer_block_from_table_entry(entry: dict) -> str | None:
+    peer = client_table_entry_peer(entry)
+    if not peer["PublicKey"] or not peer["PresharedKey"] or not peer["AllowedIPs"]:
+        return None
+    return f"""
+
+[Peer]
+# Name: {peer['name']}
+PublicKey = {peer['PublicKey']}
+PresharedKey = {peer['PresharedKey']}
+AllowedIPs = {peer['AllowedIPs']}
+"""
+
+
 def apply_client_table_names(clients: list[dict]) -> list[dict]:
     data = client_table_load()
     entries = client_table_entries(data)
     if not entries:
-        return clients
+        return []
+    synced_clients = []
     for client in clients:
         public_key = client.get("PublicKey", "").strip()
         allowed_ips = client.get("AllowedIPs", "").strip()
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
-            entry_public_key = client_table_value(entry, CLIENT_TABLE_PUBLIC_KEY_FIELDS)
-            if entry_public_key and entry_public_key != public_key:
-                continue
-            if not entry_public_key and not client_table_address_matches(entry, allowed_ips):
-                continue
-            name = client_table_value(entry, CLIENT_TABLE_NAME_FIELDS) or entry.get(CLIENT_TABLE_OUTER_KEY_FIELD, "").strip()
-            if name:
-                client["name"] = name
-            created_at = client_table_value(entry, CLIENT_TABLE_CREATED_FIELDS)
-            if created_at:
-                client["createdAt"] = created_at
-            break
-    return clients
+        entry = client_table_find_entry(entries, public_key, allowed_ips)
+        if entry is None:
+            continue
+        name = client_table_value(entry, CLIENT_TABLE_NAME_FIELDS) or entry.get(CLIENT_TABLE_OUTER_KEY_FIELD, "").strip()
+        if name:
+            client["name"] = name
+        created_at = client_table_value(entry, CLIENT_TABLE_CREATED_FIELDS)
+        if created_at:
+            client["createdAt"] = created_at
+        synced_clients.append(client)
+    return synced_clients
 
 
 def client_table_upsert(public_key: str, name: str, allowed_ips: str = ""):
     data = client_table_load()
     if data is None:
-        return
+        data = []
     if not isinstance(data, (list, dict)):
         data = []
     if isinstance(data, dict) and not isinstance(data.get("clients"), list) and not isinstance(data.get("data"), list):
@@ -974,6 +1097,31 @@ def logout(response: Response):
 def servers(authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
     auth(authorization, awg_panel_session)
     return {"servers": list_servers()}
+
+
+@app.post("/api/sync")
+def sync(
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    if server_id == "all":
+        result = {"ok": True, "local": sync_local_clients(), "remotes": []}
+        for server in load_servers():
+            try:
+                result["remotes"].append(panel_json(server, "POST", "/sync"))
+            except Exception as error:
+                result["remotes"].append({
+                    "serverId": server.get("id", ""),
+                    "serverName": server.get("name", ""),
+                    "error": str(error),
+                })
+        return result
+    server = get_server(server_id)
+    if server is not None:
+        return panel_json(server, "POST", "/sync")
+    return sync_local_clients()
 
 
 @app.post("/api/servers")
