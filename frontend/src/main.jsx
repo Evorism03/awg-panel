@@ -80,7 +80,7 @@ const formatAnyDate = (value, lang='ru') => {
   const normalized = String(value).includes('T') ? String(value) : `${value}T00:00:00`;
   const date = new Date(normalized);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {day:'2-digit', month:'2-digit', year:'numeric'});
+  return date.toLocaleString(lang === 'ru' ? 'ru-RU' : 'en-US', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
 };
 const formatDateTime = (seconds, lang='ru') => {
   if (!seconds) return '—';
@@ -627,19 +627,20 @@ function App(){
     const stat = clientPeerStat(client);
     return <tr className="detail-row"><td colSpan={colSpan}>
       <div className="detail-panel">
+        <div className="detail-title">{client.name || '—'}</div>
         <div className="detail-grid">
           <div><span>{t('lastSeen')}</span><strong>{lastSeenText(client)}</strong></div>
           <div><span>{t('createdOnly')}</span><strong>{formatAnyDate(client.createdAt, lang)}</strong></div>
+          <div><span>{t('server')}</span><strong>{clientServerName(client)}</strong></div>
           <div><span>{t('received')}</span><strong>{formatMb(stat?.rx || 0)}</strong></div>
           <div><span>{t('sent')}</span><strong>{formatMb(stat?.tx || 0)}</strong></div>
-          <div><span>{t('server')}</span><strong>{clientServerName(client)}</strong></div>
+          <div><span>{t('publicKey')}</span><strong className="mono">{client.PublicKey || '—'}</strong></div>
           <div><span>{t('allowedIps')}</span><strong>{client.AllowedIPs || '—'}</strong></div>
         </div>
         <div className="detail-actions">
           <button className="secondary" onClick={()=>copyClientConfig(client.PublicKey, client.serverId).catch(handleError)}><Clipboard size={16}/>{t('copyConfig')}</button>
           <button className="secondary" onClick={()=>downloadClientConfig(client.PublicKey, client.name||'client', client.serverId).catch(handleError)}><Download size={16}/>{t('download')}</button>
         </div>
-        <div className="detail-key mono">{client.PublicKey}</div>
       </div>
     </td></tr>;
   };
@@ -771,8 +772,8 @@ function App(){
             <td><span className={`badge ${status.className}`}>{status.label}</span></td>
             <td>{c.expiresAt ? <span className={`badge ${isExpired(c.expiresAt) ? 'expired' : 'muted'}`}>{formatDate(c.expiresAt, lang)}</span> : <span className="badge admin">{t('admin')}</span>}</td>
             <td>{lastSeenText(c)}</td>
-            <td className="mono">{c.PublicKey}</td>
-            <td>{c.AllowedIPs}</td>
+            <td className="mono">—</td>
+            <td>—</td>
             <td className="table-actions">{renderClientActions(c)}</td>
           </tr>{expandedClientKey === key && renderClientDetails(c, 8)}</React.Fragment> })}
         </tbody></table>
@@ -788,8 +789,8 @@ function App(){
             <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>
             <td>{lastSeenText(c)}</td>
             <td>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
-            <td className="mono">{c.PublicKey}</td>
-            <td>{c.AllowedIPs}</td>
+            <td className="mono">—</td>
+            <td>—</td>
             <td className="table-actions">{renderClientActions(c)}</td>
           </tr>{expandedClientKey === key && renderClientDetails(c, 9)}</React.Fragment>})}
         </tbody></table>
@@ -810,8 +811,8 @@ function App(){
             <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>
             <td>{lastSeenText(c)}</td>
             <td>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
-            <td className="mono">{c.PublicKey}</td>
-            <td>{c.AllowedIPs}</td>
+            <td className="mono">—</td>
+            <td>—</td>
             <td className="table-actions">{renderClientActions(c)}</td>
           </tr>{expandedClientKey === key && renderClientDetails(c, 9)}</React.Fragment>})}
         </tbody></table>

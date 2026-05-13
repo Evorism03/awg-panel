@@ -146,29 +146,30 @@ main{width:100%;max-width:1240px;margin:0 auto;padding:28px}
 .card > table::-webkit-scrollbar-thumb{background:#465878;border-radius:999px}
 .card > table::-webkit-scrollbar-thumb:hover{background:#5d7196}
 .client-table{table-layout:fixed;min-width:1080px}
-.active-client-table th:nth-child(1),.active-client-table td:nth-child(1){width:16%}
+.active-client-table th:nth-child(1),.active-client-table td:nth-child(1){width:26%}
 .active-client-table th:nth-child(2),.active-client-table td:nth-child(2){width:12%}
 .active-client-table th:nth-child(3),.active-client-table td:nth-child(3){width:10%}
 .active-client-table th:nth-child(4),.active-client-table td:nth-child(4){width:11%}
-.active-client-table th:nth-child(5),.active-client-table td:nth-child(5){width:11%}
-.active-client-table th:nth-child(6),.active-client-table td:nth-child(6){width:20%}
-.active-client-table th:nth-child(7),.active-client-table td:nth-child(7){width:12%}
+.active-client-table th:nth-child(5),.active-client-table td:nth-child(5){width:13%}
+.active-client-table th:nth-child(6),.active-client-table td:nth-child(6){width:14%}
+.active-client-table th:nth-child(7),.active-client-table td:nth-child(7){width:14%}
 .expired-client-table{min-width:1180px}
-.expired-client-table th:nth-child(1),.expired-client-table td:nth-child(1){width:15%}
+.expired-client-table th:nth-child(1),.expired-client-table td:nth-child(1){width:26%}
 .expired-client-table th:nth-child(2),.expired-client-table td:nth-child(2){width:12%}
 .expired-client-table th:nth-child(3),.expired-client-table td:nth-child(3){width:10%}
 .expired-client-table th:nth-child(4),.expired-client-table td:nth-child(4){width:10%}
-.expired-client-table th:nth-child(5),.expired-client-table td:nth-child(5){width:10%}
-.expired-client-table th:nth-child(6),.expired-client-table td:nth-child(6){width:10%}
-.expired-client-table th:nth-child(7),.expired-client-table td:nth-child(7){width:18%}
-.expired-client-table th:nth-child(8),.expired-client-table td:nth-child(8){width:13%}
+.expired-client-table th:nth-child(5),.expired-client-table td:nth-child(5){width:11%}
+.expired-client-table th:nth-child(6),.expired-client-table td:nth-child(6){width:11%}
+.expired-client-table th:nth-child(7),.expired-client-table td:nth-child(7){width:10%}
+.expired-client-table th:nth-child(8),.expired-client-table td:nth-child(8){width:10%}
 .client-table th:last-child,.client-table td:last-child{width:126px}
 .client-table td{vertical-align:middle}
 .client-table .selected-row{background:#12233a}
 .client-table .selected-row:hover{background:#152844}
 .client-table td.mono,.server-table td.mono{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:1px}
 .client-table td:nth-child(7),.expired-client-table td:nth-child(8){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.client-name-text{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;word-break:break-word}
+.client-name-text{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;font-weight:800;line-height:1.2}
+.detail-title{font-size:20px;font-weight:900;line-height:1.15;color:#ffffff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inline-edit{display:flex;align-items:center;gap:6px;min-width:0}
 .inline-edit input{min-width:0;padding:9px 10px}
 .icon-button{min-height:34px;width:34px;padding:0}
@@ -194,6 +195,7 @@ main{width:100%;max-width:1240px;margin:0 auto;padding:28px}
   animation:detail-in .18s ease both;
 }
 .detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.detail-grid .mono{word-break:break-all}
 .detail-grid div{
   min-width:0;
   padding:11px 12px;
