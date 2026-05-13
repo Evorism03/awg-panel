@@ -222,18 +222,36 @@ ensure_env_key() {
   printf '%s=%s\n' "$key" "$value" >> "$env_path"
 }
 
+set_env_key() {
+  local env_path="$1"
+  local key="$2"
+  local value="$3"
+  if grep -q "^${key}=" "$env_path"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$env_path"
+    return
+  fi
+  printf '%s=%s\n' "$key" "$value" >> "$env_path"
+}
+
+interface_from_config_path() {
+  local config_path="$1"
+  basename "$config_path" .conf
+}
+
 update_existing_env() {
   local env_path="$1"
-  local awg_container awg_config_path awg_clients_table_path
+  local awg_container awg_config_path awg_clients_table_path awg_iface
   awg_container="$(env_value AWG_DOCKER_CONTAINER)"
   [ -n "$awg_container" ] || awg_container="$(detect_awg_container)"
   [ -n "$awg_container" ] || return
   awg_config_path="$(env_value AWG_CONTAINER_CONFIG_PATH)"
   [ -n "$awg_config_path" ] || awg_config_path="$(detect_awg_config_path "$awg_container")"
   [ -n "$awg_config_path" ] || return
+  awg_iface="${AWG_INTERFACE:-$(interface_from_config_path "$awg_config_path")}"
   awg_clients_table_path="$(env_value AWG_CONTAINER_CLIENTS_TABLE_PATH)"
   [ -n "$awg_clients_table_path" ] || awg_clients_table_path="$(detect_awg_clients_table_path "$awg_container" "$awg_config_path")"
   [ -n "$awg_clients_table_path" ] || return
+  set_env_key "$env_path" "AWG_INTERFACE" "$awg_iface"
   ensure_env_key "$env_path" "AWG_CLIENTS_TABLE_PATH" "$awg_clients_table_path"
   ensure_env_key "$env_path" "AWG_CONTAINER_CLIENTS_TABLE_PATH" "$awg_clients_table_path"
 }
@@ -247,7 +265,7 @@ write_env_if_missing() {
     return
   fi
 
-  local awg_container awg_port server_ip awg_config_path awg_clients_table_path admin_token admin_password
+  local awg_container awg_port server_ip awg_config_path awg_clients_table_path awg_iface admin_token admin_password
   awg_container="$(detect_awg_container)"
   [ -n "$awg_container" ] || fail "Could not detect AmneziaWG container. Run with AWG_DOCKER_CONTAINER=name."
   awg_port="$(detect_udp_port "$awg_container")"
@@ -255,6 +273,7 @@ write_env_if_missing() {
   server_ip="$(detect_public_ip)"
   awg_config_path="$(detect_awg_config_path "$awg_container")"
   [ -n "$awg_config_path" ] || fail "Could not detect AmneziaWG config in container $awg_container. Run with AWG_CONTAINER_CONFIG_PATH=/path/to/awg0.conf."
+  awg_iface="${AWG_INTERFACE:-$(interface_from_config_path "$awg_config_path")}"
   awg_clients_table_path="$(detect_awg_clients_table_path "$awg_container" "$awg_config_path")"
   [ -n "$awg_clients_table_path" ] || awg_clients_table_path="$(dirname "$awg_config_path")/clientsTable"
   admin_token="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
@@ -265,7 +284,7 @@ write_env_if_missing() {
 ADMIN_TOKEN=$admin_token
 ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
 ADMIN_PASSWORD=$admin_password
-AWG_INTERFACE=${AWG_INTERFACE:-awg0}
+AWG_INTERFACE=$awg_iface
 MOCK_AWG=false
 AWG_BIN=${AWG_BIN:-awg}
 AWG_CONTAINER_NAME=$awg_container

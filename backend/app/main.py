@@ -1096,7 +1096,13 @@ def reload_service():
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "interface": AWG_INTERFACE, "mock": MOCK_AWG}
+    return {
+        "ok": True,
+        "interface": AWG_INTERFACE,
+        "configPath": AWG_CONTAINER_CONFIG_PATH if AWG_DOCKER_CONTAINER else AWG_CONFIG_PATH,
+        "clientsTablePath": AWG_CONTAINER_CLIENTS_TABLE_PATH if AWG_DOCKER_CONTAINER else AWG_CLIENTS_TABLE_PATH,
+        "mock": MOCK_AWG,
+    }
 
 @app.post("/api/login")
 def login(body: LoginRequest, response: Response):
