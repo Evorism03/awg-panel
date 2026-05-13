@@ -239,6 +239,7 @@ function App(){
   const [expandedClientKey,setExpandedClientKey]=useState('');
   const [expandedServerId,setExpandedServerId]=useState('');
   const [expandedOrderId,setExpandedOrderId]=useState('');
+  const [showOrderForm,setShowOrderForm]=useState(false);
   const [selectedClientKeys,setSelectedClientKeys]=useState(()=>new Set());
   const [bulkDeleteState,setBulkDeleteState]=useState({running:false,total:0,done:0,last:''});
   const [pendingClientKeys,setPendingClientKeys]=useState(()=>new Set());
@@ -1263,7 +1264,9 @@ function App(){
     {view==='orders' && <>
       <section className="section-head">
         <div><h2>{t('orders')}</h2><p>{t('ordersSub')}</p></div>
-        <span className="badge ok">{t('allOrders')}: {orders.length}</span>
+        <div className="actions">
+          <button onClick={()=>setShowOrderForm(v=>!v)}><Plus size={16}/>{t('newOrder')}</button>
+        </div>
       </section>
 
       <section className="order-stats">
@@ -1274,8 +1277,11 @@ function App(){
         </div>)}
       </section>
 
-      <section className="card add-panel">
-        <div className="panel-head"><div><h2>{t('newOrder')}</h2><p>{t('ordersSub')}</p></div></div>
+      {showOrderForm && <section className="card add-panel">
+        <div className="panel-head">
+          <h2>{t('newOrder')}</h2>
+          <button className="secondary" onClick={()=>setShowOrderForm(false)}>{t('close')}</button>
+        </div>
         <div className="order-form-grid">
           <label>{t('orderLogin')}<input value={orderLogin} onChange={e=>setOrderLogin(e.target.value)} placeholder={t('orderLoginPlaceholder')} /></label>
           <label>{t('orderEmail')}<input value={orderEmail} onChange={e=>setOrderEmail(e.target.value)} placeholder={t('orderEmailPlaceholder')} /></label>
@@ -1284,7 +1290,7 @@ function App(){
           </select></label>
         </div>
         <button onClick={()=>addOrder().catch(handleError)} disabled={!orderLogin.trim() || !orderEmail.trim()}><Plus size={16}/>{t('add')}</button>
-      </section>
+      </section>}
 
       <section className="card">
         <div className="panel-head">
@@ -1321,7 +1327,7 @@ function App(){
                     {expanded && <tr className="detail-row"><td colSpan={6}><div className="detail-panel">
                       <div className="detail-grid">
                         <div><span>{t('orderLogin')}</span><strong>{o.login}</strong></div>
-                        <div><span>{t('orderEmail')}</span><strong>{o.email||'—'}</strong></div>
+                        <div><span>{t('orderEmail')}</span><strong className="mono">{o.email||'—'}</strong></div>
                         <div><span>{t('term')}</span><strong>{o.term}</strong></div>
                         <div><span>{t('created')}</span><strong>{formatAnyDate(o.created, lang)}</strong></div>
                       </div>
