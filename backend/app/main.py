@@ -653,11 +653,49 @@ def client_table_entries(data):
 
 
 def client_table_value(entry: dict, fields: list[str]) -> str:
+    if not isinstance(entry, dict):
+        return ""
     for field in fields:
         value = entry.get(field)
         if value is not None and str(value).strip():
             return str(value).strip()
+    for value in entry.values():
+        if isinstance(value, dict):
+            nested = client_table_value(value, fields)
+            if nested:
+                return nested
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    nested = client_table_value(item, fields)
+                    if nested:
+                        return nested
     return ""
+
+
+def client_table_config_ips(entry: dict) -> set[str]:
+    ips = set()
+
+    def scan(value):
+        if isinstance(value, dict):
+            for item in value.values():
+                scan(item)
+            return
+        if isinstance(value, list):
+            for item in value:
+                scan(item)
+            return
+        if not isinstance(value, str) or "=" not in value:
+            return
+        for key in ["Address", "AllowedIPs"]:
+            for match in re.finditer(rf"(?m)^\s*{key}\s*=\s*(.+?)\s*$", value):
+                for part in match.group(1).split(","):
+                    part = part.strip()
+                    if part:
+                        ips.add(part.split("/")[0])
+
+    scan(entry)
+    return ips
 
 
 def client_table_address_matches(entry: dict, allowed_ips: str) -> bool:
@@ -666,6 +704,7 @@ def client_table_address_matches(entry: dict, allowed_ips: str) -> bool:
     target_ips = {part.strip().split("/")[0] for part in allowed_ips.split(",") if part.strip()}
     entry_value = client_table_value(entry, CLIENT_TABLE_ADDRESS_FIELDS)
     entry_ips = {part.strip().split("/")[0] for part in entry_value.split(",") if part.strip()}
+    entry_ips |= client_table_config_ips(entry)
     return bool(target_ips and entry_ips and target_ips & entry_ips)
 
 
