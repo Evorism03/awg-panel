@@ -460,6 +460,9 @@ function App(){
   const activeClientCount = peerStats.filter(peer=>peer.latest && nowSeconds - peer.latest < 60).length;
   const totalRx = peerStats.reduce((sum,peer)=>sum + peer.rx, 0);
   const totalTx = peerStats.reduce((sum,peer)=>sum + peer.tx, 0);
+  const allServerActiveClientCount = allServerPeerStats.filter(peer=>peer.latest && nowSeconds - peer.latest < 60).length;
+  const allServerTotalRx = allServerPeerStats.reduce((sum,peer)=>sum + peer.rx, 0);
+  const allServerTotalTx = allServerPeerStats.reduce((sum,peer)=>sum + peer.tx, 0);
   const activeServerCount = servers.filter(server=>server.status === 'online').length;
   const editingLocalServer = editingServerId === 'local';
   const orderCounts = orderStatuses.reduce((counts,[status])=>({
@@ -803,6 +806,12 @@ function App(){
           <button className={activeServerId==='all'?'secondary active':'secondary'} onClick={()=>selectServer('all')}>{t('allServers')}</button>
           <button onClick={()=>setShowServerForm(true)}><Plus size={16}/>{t('addServer')}</button>
         </div>
+      </section>
+      <section className="server-summary">
+        <div className="card metric server-metric"><Server size={22}/><span>{t('servers')}</span><strong>{servers.length}</strong></div>
+        <div className="card metric server-metric"><Activity size={22}/><span>{t('active')}</span><strong>{activeServerCount}</strong></div>
+        <div className="card metric server-metric"><Users size={22}/><span>{t('clients')}</span><strong>{allServerStatsClients.length}</strong></div>
+        <div className="card metric server-metric"><ShoppingCart size={22}/><span>{t('traffic')}</span><strong>{formatMb(allServerTotalRx + allServerTotalTx)}</strong></div>
       </section>
       {showServerForm && <section className="card add-panel">
         <div className="panel-head">
