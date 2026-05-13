@@ -6,8 +6,10 @@ import './style.css';
 const api = async (path, options={}) => {
   const res = await fetch(path, { ...options, credentials:'same-origin', headers: { 'Content-Type':'application/json', ...(options.headers||{}) }});
   if (!res.ok) {
-    if (res.status === 401) throw new Error('Unauthorized');
-    throw new Error(await res.text());
+    const error = new Error(await res.text());
+    error.status = res.status;
+    if (res.status === 401) error.message = 'Unauthorized';
+    throw error;
   }
   return res;
 };
@@ -30,10 +32,10 @@ const dict = {
   ru: {
     appName:'AmneziaWG Admin',
     purchase:'Покупка',
-    purchaseSub:'Оформите доступ и создайте заказ для подключения.',
-    purchaseLead:'Выберите срок и отправьте заявку. Заказ появится в админке.',
-    purchaseOrderSub:'Форма покупки привязана к созданию заказа.',
-    purchaseAction:'Оформить заказ',
+    purchaseSub:'Оформите доступ и создайте общий заказ для подключения.',
+    purchaseLead:'Выберите срок, укажите логин и почту, затем отправьте заявку.',
+    purchaseOrderSub:'Заказ сразу уходит в общий список активных заявок.',
+    purchaseAction:'Оформить активный заказ',
     adminPanel:'Админ-панель',
     today:'Сегодня', admin:'Админ', oneDay:'1 день', threeDays:'3 дня', sevenDays:'7 дней', fifteenDays:'15 дней', oneMonth:'1 месяц', threeMonths:'3 месяца', sixMonths:'6 месяцев', oneYear:'1 год',
     online:'Онлайн', offline:'Оффлайн', recent:'Недавно', renewalPending:'Ожидает продления', checking:'Проверка сессии', signInTitle:'Вход в панель управления', login:'Логин', password:'Пароль', signIn:'Войти',
@@ -41,25 +43,26 @@ const dict = {
     totalClients:'Всего клиентов', activeClients:'Активные клиенты', expiredClients:'Просроченные клиенты', serversActive:'Серверы / активные', activeUsers:'Активные пользователи', maxOnline:'Максимум онлайн-клиентов по дням', now:'Сейчас',
     traffic:'Трафик', rx:'Прием данных', tx:'Отдача данных', peersDump:'Peers в dump', clientsSub:'Создание, выдача и скачивание конфигов для выбранного сервера',
     importConf:'Импорт .conf', createClient:'Создать клиента', importTitle:'Импорт Amnezia-конфига', close:'Закрыть', clientName:'Имя клиента', readyConf:'Готовый .conf',
-    saveCopy:'Сохранить и скопировать config', server:'Сервер', term:'Срок', createIssue:'Создать и выдать config', issuedConf:'Выданный конфиг', name:'Имя', status:'Статус',
+    saveCopy:'Сохранить и скопировать config', server:'Сервер', term:'Срок', createIssue:'Создать и выдать config', issuedConf:'Выданный конфиг', name:'Имя', status:'Статус', limit:'Лимит',
     expires:'Окончание', publicKey:'Публичный ключ', allowedIps:'Разрешенные IP', key:'Ключ', actions:'Действия', activeClientsSub:'Клиенты с действующей подпиской и активным peer в конфиге.', expiredClientsSub:'Клиенты, которые не продлили подписку. Они заблокированы и хранятся отдельно.', blockedAt:'Заблокирован',
     deleteClient:'Удалить клиента?', copied:'Скопировано', noCopyData:'Нет данных для копирования', serverUnavailable:'Выбранный сервер недоступен. Выбери активный сервер или отредактируй подключение.',
     dataUpdated:'Данные обновлены', configCreatedCopied:'Конфиг создан и скопирован', configCreated:'Конфиг создан', configSavedCopied:'Конфиг сохранен и скопирован', configSaved:'Конфиг сохранен',
-    configUnavailable:'Конфиг недоступен', configCopied:'Конфиг скопирован', clientOrOrder:'Клиент или название заказа', contact:'Контакт: Telegram, телефон, email', plan:'Тариф',
-    add:'Добавить', new:'Новый', paid:'Оплачен', issued:'Выдан', closed:'Закрыт', ordersSub:'Заявки, оплаты и выдача доступов клиентам.', allOrders:'Все заказы', newOrder:'Новый заказ', recentOrders:'Последние заказы', noOrders:'Заказов пока нет', created:'Создан', serversSub:'Список подключений для управления несколькими панелями VPS',
+    configUnavailable:'Конфиг недоступен', configCopied:'Конфиг скопирован', staleData:'Данные уже изменил другой админ, список обновлён', clientOrOrder:'Клиент или название заказа', contact:'Контакт: Telegram, телефон, email', plan:'Тариф',
+    add:'Добавить', activeOrder:'Активный', paid:'Оплачен', issued:'Выдан', closed:'Закрыт', ordersSub:'Заявки, оплаты и выдача доступов клиентам.', allOrders:'Все заказы', newOrder:'Новый заказ', recentOrders:'Последние заказы', noOrders:'Заказов пока нет', created:'Создан', serversSub:'Список подключений для управления несколькими панелями VPS',
+    orderLogin:'Логин', orderEmail:'Почта', orderLoginPlaceholder:'login123', orderEmailPlaceholder:'mail@example.com',
     addServer:'Добавить сервер', editServer:'Редактировать сервер', title:'Название', panelUrl:'URL панели', token:'Токен', saveServer:'Сохранить сервер', endpoint:'URL панели', set:'Задан',
     notSet:'Не задан', active:'Активен', inactiveEdit:'Неактивен · редактировать', select:'Выбрать', edit:'Редактировать', activeServer:'Активный сервер', dumpTitle:'Активный сервер: awg dump',
     noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.', details:'Подробнее', lastSeen:'Последнее подключение', never:'Никогда', download:'Скачать', copyConfig:'Скопировать конфиг', received:'Загрузка', sent:'Отдача', createdClients:'Созданных клиентов',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', orderNamePlaceholder:'Клиент или название заказа', contactPlaceholder:'Telegram, телефон, email', currentPanel:'Текущая панель', deleteServer:'Удалить сервер?',
-    sortBy:'Сортировка', sortNameAsc:'Имя A-Z', sortNameDesc:'Имя Z-A', sortCreatedDesc:'Дата создания, новые', sortCreatedAsc:'Дата создания, старые', sortLastSeenDesc:'Последнее подключение, новые', sortLastSeenAsc:'Последнее подключение, старые', selectAll:'Выбрать все', clearSelection:'Снять выбор', deleteSelected:'Удалить выбранные', selectedClients:'Выбрано клиентов', createdOnly:'Дата создания', lastConnection:'Последнее подключение'
+    sortBy:'Сортировка', sortNameAsc:'Имя A-Z', sortNameDesc:'Имя Z-A', sortCreatedDesc:'Дата создания, новые', sortCreatedAsc:'Дата создания, старые', sortLastSeenDesc:'Последнее подключение, новые', sortLastSeenAsc:'Последнее подключение, старые', selectAll:'Выбрать все', clearSelection:'Снять выбор', deleteSelected:'Удалить выбранные', selectedClients:'Выбрано клиентов', createdOnly:'Дата создания', lastConnection:'Последнее подключение', deleting:'Удаление', deleted:'Удалено', bulkActions:'Действия группы', bulkReady:'Можно удалять выбранных', purchase:'Покупка', purchaseSub:'', purchaseLead:'', purchaseOrderSub:'', purchaseAction:'', adminPanel:'Админ-панель'
   },
   us: {
     appName:'AmneziaWG Admin',
     purchase:'Purchase',
-    purchaseSub:'Choose access and create an order for the connection.',
-    purchaseLead:'Pick a term and send the request. The order will appear in the admin panel.',
-    purchaseOrderSub:'The purchase form is tied to order creation.',
-    purchaseAction:'Place order',
+    purchaseSub:'Create a shared order for the connection.',
+    purchaseLead:'Pick a term, enter login and email, then send the request.',
+    purchaseOrderSub:'The order goes straight into the shared active list.',
+    purchaseAction:'Place active order',
     adminPanel:'Admin panel',
     today:'Today', admin:'Admin', oneDay:'1 day', threeDays:'3 days', sevenDays:'7 days', fifteenDays:'15 days', oneMonth:'1 month', threeMonths:'3 months', sixMonths:'6 months', oneYear:'1 year',
     online:'Online', offline:'Offline', recent:'Recent', renewalPending:'Awaiting renewal', checking:'Checking session', signInTitle:'Admin panel sign in', login:'Login', password:'Password', signIn:'Sign in',
@@ -67,17 +70,18 @@ const dict = {
     totalClients:'Total clients', activeClients:'Active clients', expiredClients:'Expired clients', serversActive:'Servers / active', activeUsers:'Active users', maxOnline:'Max online clients by day', now:'Now',
     traffic:'Traffic', rx:'Received', tx:'Sent', peersDump:'Peers in dump', clientsSub:'Create, issue, and download configs for the selected server',
     importConf:'Import .conf', createClient:'Create client', importTitle:'Import Amnezia config', close:'Close', clientName:'Client name', readyConf:'Ready .conf',
-    saveCopy:'Save and copy config', server:'Server', term:'Term', createIssue:'Create and issue config', issuedConf:'Issued config', name:'Name', status:'Status',
+    saveCopy:'Save and copy config', server:'Server', term:'Term', createIssue:'Create and issue config', issuedConf:'Issued config', name:'Name', status:'Status', limit:'Limit',
     expires:'Expires', publicKey:'Public key', allowedIps:'Allowed IPs', key:'Key', actions:'Actions', activeClientsSub:'Clients with an active subscription and peer in the config.', expiredClientsSub:'Clients who did not renew. They are blocked and stored separately.', blockedAt:'Blocked',
     deleteClient:'Delete client?', copied:'Copied', noCopyData:'No data to copy', serverUnavailable:'Selected server is unavailable. Select an active server or edit the connection.',
     dataUpdated:'Data updated', configCreatedCopied:'Config created and copied', configCreated:'Config created', configSavedCopied:'Config saved and copied', configSaved:'Config saved',
-    configUnavailable:'Config unavailable', configCopied:'Config copied', clientOrOrder:'Client or order name', contact:'Contact: Telegram, phone, email', plan:'Plan',
-    add:'Add', new:'New', paid:'Paid', issued:'Issued', closed:'Closed', ordersSub:'Requests, payments, and issuing client access.', allOrders:'All orders', newOrder:'New order', recentOrders:'Recent orders', noOrders:'No orders yet', created:'Created', serversSub:'Connection list for managing multiple VPS panels',
+    configUnavailable:'Config unavailable', configCopied:'Config copied', staleData:'Another admin already changed this data, list refreshed', clientOrOrder:'Client or order name', contact:'Contact: Telegram, phone, email', plan:'Plan',
+    add:'Add', activeOrder:'Active', paid:'Paid', issued:'Issued', closed:'Closed', ordersSub:'Requests, payments, and issuing client access.', allOrders:'All orders', newOrder:'New order', recentOrders:'Recent orders', noOrders:'No orders yet', created:'Created', serversSub:'Connection list for managing multiple VPS panels',
+    orderLogin:'Login', orderEmail:'Email', orderLoginPlaceholder:'login123', orderEmailPlaceholder:'mail@example.com',
     addServer:'Add server', editServer:'Edit server', title:'Title', panelUrl:'Panel URL', token:'Token', saveServer:'Save server', endpoint:'Panel URL', set:'Set',
     notSet:'Not set', active:'Active', inactiveEdit:'Inactive · edit', select:'Select', edit:'Edit', activeServer:'Active server', dumpTitle:'Active server: awg dump',
     noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.', details:'Details', lastSeen:'Last connected', never:'Never', download:'Download', copyConfig:'Copy config', received:'Received', sent:'Sent', createdClients:'Created clients',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', orderNamePlaceholder:'Client or order name', contactPlaceholder:'Telegram, phone, email', currentPanel:'Current panel', deleteServer:'Delete server?',
-    sortBy:'Sort', sortNameAsc:'Name A-Z', sortNameDesc:'Name Z-A', sortCreatedDesc:'Created newest', sortCreatedAsc:'Created oldest', sortLastSeenDesc:'Last connected newest', sortLastSeenAsc:'Last connected oldest', selectAll:'Select all', clearSelection:'Clear selection', deleteSelected:'Delete selected', selectedClients:'Selected clients', createdOnly:'Created date', lastConnection:'Last connected'
+    sortBy:'Sort', sortNameAsc:'Name A-Z', sortNameDesc:'Name Z-A', sortCreatedDesc:'Created newest', sortCreatedAsc:'Created oldest', sortLastSeenDesc:'Last connected newest', sortLastSeenAsc:'Last connected oldest', selectAll:'Select all', clearSelection:'Clear selection', deleteSelected:'Delete selected', selectedClients:'Selected clients', createdOnly:'Created date', lastConnection:'Last connected', deleting:'Deleting', deleted:'Deleted', bulkActions:'Group actions', bulkReady:'Ready to delete selected', purchase:'Purchase', purchaseSub:'', purchaseLead:'', purchaseOrderSub:'', purchaseAction:'', adminPanel:'Admin panel'
   }
 };
 
@@ -105,24 +109,28 @@ const clientTerms = [
   ['admin','admin'], ['1d','oneDay'], ['3d','threeDays'], ['7d','sevenDays'], ['15d','fifteenDays'], ['1m','oneMonth'], ['3m','threeMonths'], ['6m','sixMonths'], ['1y','oneYear'],
 ];
 const orderStatuses = [
-  ['new', 'new', Clock3],
+  ['active', 'activeOrder', Clock3],
   ['paid', 'paid', CreditCard],
   ['issued', 'issued', UserCheck],
   ['closed', 'closed', CheckCircle2],
 ];
 const orderStatusAliases = {
-  'Новый': 'new',
+  new: 'active',
+  'Активный': 'active',
+  'Новый': 'active',
   'Оплачен': 'paid',
   'Выдан': 'issued',
   'Закрыт': 'closed',
-  New: 'new',
+  Active: 'active',
+  New: 'active',
   Paid: 'paid',
   Issued: 'issued',
   Closed: 'closed',
 };
-const normalizeOrderStatus = (status) => orderStatusAliases[status] || status || 'new';
+const normalizeOrderStatus = (status) => orderStatusAliases[status] || status || 'active';
 const orderStatusClass = (status) => ({
-  new: 'muted',
+  active: 'ok',
+  new: 'ok',
   paid: 'warn',
   issued: 'ok',
   closed: 'admin',
@@ -211,13 +219,15 @@ function App(){
   const [serverName,setServerName]=useState('');
   const [serverBaseUrl,setServerBaseUrl]=useState('');
   const [serverToken,setServerToken]=useState('');
+  const [serverMaxUsers,setServerMaxUsers]=useState('');
   const [editingServerId,setEditingServerId]=useState(null);
+  const [serverLimitDrafts,setServerLimitDrafts]=useState({});
   const [activeServerId,setActiveServerId]=useState(()=>localStorage.getItem('activeServerId')||'local');
   const [servers,setServers]=useState([]);
-  const [orderName,setOrderName]=useState('');
-  const [orderContact,setOrderContact]=useState('');
+  const [orderLogin,setOrderLogin]=useState('');
+  const [orderEmail,setOrderEmail]=useState('');
   const [orderPlan,setOrderPlan]=useState('1 месяц');
-  const [orders,setOrders]=useState(()=>JSON.parse(localStorage.getItem('orders')||'[]'));
+  const [orders,setOrders]=useState([]);
   const [activityHistory,setActivityHistory]=useState(()=>JSON.parse(localStorage.getItem('dailyActivityHistory')||'[]'));
   const [lastConfig,setLastConfig]=useState('');
   const [error,setError]=useState('');
@@ -226,6 +236,7 @@ function App(){
   const [expandedClientKey,setExpandedClientKey]=useState('');
   const [expandedServerId,setExpandedServerId]=useState('');
   const [selectedClientKeys,setSelectedClientKeys]=useState(()=>new Set());
+  const [bulkDeleteState,setBulkDeleteState]=useState({running:false,total:0,done:0,last:''});
   const [clientSortField,setClientSortField]=useState('name');
   const [clientSortDir,setClientSortDir]=useState('asc');
   const selectionDragRef = useRef({active:false, desired:false, suppressClick:false, lastKey:''});
@@ -258,6 +269,18 @@ function App(){
     const j=await r.json();
     const next = j.servers || [];
     setServers(next);
+    setServerLimitDrafts(current => {
+      const nextDrafts = { ...current };
+      next.forEach(server => {
+        if (nextDrafts[server.id] === undefined) {
+          nextDrafts[server.id] = server.maxUsers ? String(server.maxUsers) : '';
+        }
+      });
+      Object.keys(nextDrafts).forEach(id => {
+        if (!next.some(server => server.id === id)) delete nextDrafts[id];
+      });
+      return nextDrafts;
+    });
     if (activeServerId === 'all') return 'all';
     if (!next.some(server=>server.id===activeServerId)) {
       const first = next[0]?.id || 'local';
@@ -300,6 +323,9 @@ function App(){
     if (serverId) {
       await loadClients(serverId, {manual}).catch(handleError);
       await loadAllServerStats().catch(()=>{});
+    }
+    if (isAdminRoute) {
+      await loadOrders().catch(handleError);
     }
   };
 
@@ -375,7 +401,17 @@ function App(){
     const savedConfig = clientConfigs[pk];
     const params = new URLSearchParams({public_key: pk});
     if (serverId) params.set('server_id', serverId);
-    await api(`/api/clients?${params.toString()}`,{method:'DELETE'});
+    try {
+      await api(`/api/clients?${params.toString()}`,{method:'DELETE'});
+    } catch (error) {
+      if (error.status === 404) {
+        await load().catch(handleError);
+        setNotice(t('staleData'));
+        setTimeout(()=>setNotice(''), 2500);
+        return;
+      }
+      throw error;
+    }
     if (savedConfig) {
       const next = {...clientConfigs};
       delete next[pk];
@@ -406,7 +442,18 @@ function App(){
     const serverId = client.serverId || activeServerId;
     const params = new URLSearchParams({public_key: client.PublicKey});
     if (serverId) params.set('server_id', serverId);
-    await api(`/api/clients?${params.toString()}`,{method:'PATCH',body:JSON.stringify({name:nextName})});
+    try {
+      await api(`/api/clients?${params.toString()}`,{method:'PATCH',body:JSON.stringify({name:nextName})});
+    } catch (error) {
+      if (error.status === 404) {
+        cancelEditClient();
+        await load().catch(handleError);
+        setNotice(t('staleData'));
+        setTimeout(()=>setNotice(''), 2500);
+        return;
+      }
+      throw error;
+    }
     cancelEditClient();
     await load();
   };
@@ -428,22 +475,23 @@ function App(){
     const editingLocal = editingServerId === 'local';
     if(!serverName.trim()) return;
     if(!editingLocal && (!serverBaseUrl.trim() || !serverToken.trim())) return;
+    const maxUsers = serverMaxUsers.trim() === '' ? 0 : Math.max(0, Number.parseInt(serverMaxUsers, 10) || 0);
     if(editingServerId){
       const payload = editingLocal
-        ? {name:serverName.trim()}
-        : {name:serverName.trim(),baseUrl:serverBaseUrl.trim(),token:serverToken.trim()};
+        ? {name:serverName.trim(),maxUsers}
+        : {name:serverName.trim(),baseUrl:serverBaseUrl.trim(),token:serverToken.trim(),maxUsers};
       await api('/api/servers/'+encodeURIComponent(editingServerId),{method:'PUT',body:JSON.stringify(payload)});
       const nextActive = await loadServers();
       await loadClients(nextActive || activeServerId).catch(handleError);
     } else {
-      const r=await api('/api/servers',{method:'POST',body:JSON.stringify({name:serverName.trim(),baseUrl:serverBaseUrl.trim(),token:serverToken.trim()})});
+      const r=await api('/api/servers',{method:'POST',body:JSON.stringify({name:serverName.trim(),baseUrl:serverBaseUrl.trim(),token:serverToken.trim(),maxUsers})});
       const j=await r.json();
       await loadServers();
       if (j.server?.id) {
         await selectServer(j.server.id);
       }
     }
-    setServerName(''); setServerBaseUrl(''); setServerToken(''); setShowServerForm(false);
+    setServerName(''); setServerBaseUrl(''); setServerToken(''); setServerMaxUsers(''); setShowServerForm(false);
     setEditingServerId(null);
   };
   const selectServer=(id)=>{ setActiveServerId(id); if (id !== 'all') setClientServerId(id); localStorage.setItem('activeServerId',id); if(id) loadClients(id).catch(handleError); };
@@ -452,6 +500,7 @@ function App(){
     setServerName(server.name);
     setServerBaseUrl(server.baseUrl || '');
     setServerToken(server.token || '');
+    setServerMaxUsers(server.maxUsers ? String(server.maxUsers) : '');
     setShowServerForm(true);
   };
   const closeServerForm=()=>{
@@ -460,6 +509,48 @@ function App(){
     setServerName('');
     setServerBaseUrl('');
     setServerToken('');
+    setServerMaxUsers('');
+  };
+  const serverLimitValue = (server) => serverLimitDrafts[server.id] ?? (server.maxUsers ? String(server.maxUsers) : '');
+  const saveServerLimit = async (server, rawValue) => {
+    const maxUsers = rawValue.trim() === '' ? 0 : Math.max(0, Number.parseInt(rawValue, 10) || 0);
+    const currentMaxUsers = Number(server.maxUsers || 0);
+    if (currentMaxUsers === maxUsers) {
+      setServerLimitDrafts(current => {
+        const next = { ...current };
+        delete next[server.id];
+        return next;
+      });
+      return;
+    }
+    const payload = {
+      name: server.name || '',
+      baseUrl: server.kind === 'local' ? undefined : server.baseUrl,
+      token: server.kind === 'local' ? undefined : (server.token || ''),
+      maxUsers,
+    };
+    if (server.kind === 'local') {
+      delete payload.baseUrl;
+      delete payload.token;
+    }
+    try {
+      await api('/api/servers/'+encodeURIComponent(server.id),{method:'PUT',body:JSON.stringify(payload)});
+    } catch (error) {
+      if (error.status === 404) {
+        await loadServers().catch(handleError);
+        setNotice(t('staleData'));
+        setTimeout(()=>setNotice(''), 2500);
+        return;
+      }
+      throw error;
+    }
+    setServerLimitDrafts(current => {
+      const next = { ...current };
+      delete next[server.id];
+      return next;
+    });
+    const nextActive = await loadServers();
+    if (nextActive) await loadClients(nextActive).catch(handleError);
   };
   const deleteServer=(id)=>{
     if(id === 'local') return;
@@ -467,15 +558,67 @@ function App(){
       .then(async()=>{ const next = await loadServers(); if(activeServerId===id) selectServer(next[0]?.id || 'local'); })
       .catch(handleError);
   };
-  const saveOrders=(next)=>{ setOrders(next); localStorage.setItem('orders',JSON.stringify(next)); };
-  const addOrder=()=>{
-    const title = orderName.trim();
-    if(!title) return;
-    saveOrders([{id:crypto.randomUUID(), name:title, contact:orderContact.trim(), plan:orderPlan, status:'new', created:new Date().toLocaleString('ru-RU')} , ...orders]);
-    setOrderName(''); setOrderContact('');
+  const normalizeOrder = (order) => ({
+    ...order,
+    login: order.login || order.name || '',
+    email: order.email || order.contact || '',
+    term: order.term || order.plan || '',
+    created: order.created || order.createdAt || '',
+  });
+  const loadOrders = async () => {
+    if (!isAdminRoute || !isLoggedIn) return;
+    const r = await api('/api/orders');
+    const j = await r.json();
+    setOrders((j.orders || []).map(normalizeOrder));
   };
-  const updateOrder=(id,status)=>saveOrders(orders.map(o=>o.id===id?{...o,status}:o));
-  const deleteOrder=(id)=>saveOrders(orders.filter(o=>o.id!==id));
+  const saveOrders = (next) => setOrders(next.map(normalizeOrder));
+  const addOrder = async () => {
+    const login = orderLogin.trim();
+    const email = orderEmail.trim();
+    const term = orderPlan;
+    if(!login || !email) return;
+    const r = await api('/api/orders',{method:'POST',body:JSON.stringify({login,email,term})});
+    const j = await r.json();
+    const created = normalizeOrder(j.order || {});
+    setOrders(current=>[created, ...current.filter(order=>order.id !== created.id)]);
+    setOrderLogin('');
+    setOrderEmail('');
+    if (isAdminRoute) {
+      await loadOrders();
+    }
+  };
+  const updateOrder=async(id,status)=>{
+    if (!isAdminRoute || !isLoggedIn) return;
+    try {
+      const r = await api(`/api/orders/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify({status})});
+      const j = await r.json();
+      const updated = normalizeOrder(j.order || {});
+      setOrders(current=>current.map(order=>order.id===updated.id ? updated : order));
+    } catch (error) {
+      if (error.status === 404) {
+        await loadOrders().catch(handleError);
+        setNotice(t('staleData'));
+        setTimeout(()=>setNotice(''), 2500);
+        return;
+      }
+      throw error;
+    }
+  };
+  const deleteOrder=async(id)=>{
+    if (!isAdminRoute || !isLoggedIn) return;
+    try {
+      await api(`/api/orders/${encodeURIComponent(id)}`,{method:'DELETE'});
+      setOrders(current=>current.filter(order=>order.id!==id));
+    } catch (error) {
+      if (error.status === 404) {
+        await loadOrders().catch(handleError);
+        setNotice(t('staleData'));
+        setTimeout(()=>setNotice(''), 2500);
+        return;
+      }
+      throw error;
+    }
+  };
 
   useEffect(()=>{
     if (!isAdminRoute) {
@@ -510,6 +653,8 @@ function App(){
   const allServerStatsClients = allServerClients.length ? allServerClients : clients;
   const allServerPeerStats = parsePeerStats(allServerDump || dump);
   const nowSeconds = Math.floor(Date.now() / 1000);
+  const activeClientTotal = allServerStatsClients.filter(client=>!client.blocked).length;
+  const totalServerMaxUsers = servers.reduce((sum, server) => sum + Number(server.maxUsers || 0), 0);
   const activeClientCount = peerStats.filter(peer=>peer.latest && nowSeconds - peer.latest < 60).length;
   const totalRx = peerStats.reduce((sum,peer)=>sum + peer.rx, 0);
   const totalTx = peerStats.reduce((sum,peer)=>sum + peer.tx, 0);
@@ -576,6 +721,20 @@ function App(){
     };
   },[]);
 
+  useEffect(()=>{
+    if (!isAdminRoute || !isLoggedIn) return;
+    const syncNow = () => load().catch(handleError);
+    const onVisibility = () => {
+      if (!document.hidden) syncNow();
+    };
+    window.addEventListener('focus', syncNow);
+    document.addEventListener('visibilitychange', onVisibility);
+    return ()=>{
+      window.removeEventListener('focus', syncNow);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  },[isAdminRoute, isLoggedIn, activeServerId]);
+
   const clientStatus = (client)=>{
     const publicKey = client?.PublicKey;
     const sourceServerId = client?.serverId;
@@ -641,13 +800,39 @@ function App(){
     if (!selectedClientKeys.size) return;
     if (!confirm(`${t('deleteSelected')}?`)) return;
     const keys = [...selectedClientKeys];
-    for (const entry of keys) {
-      const [serverId, ...rest] = entry.split(':');
-      const publicKey = rest.join(':');
-      await deleteClientEntry(publicKey, serverId || activeServerId);
+    setBulkDeleteState({running:true,total:keys.length,done:0,last:''});
+    try {
+      const chunks = [];
+      for (let index = 0; index < keys.length; index += 3) {
+        chunks.push(keys.slice(index, index + 3));
+      }
+      for (const chunk of chunks) {
+        const results = await Promise.allSettled(chunk.map(async (entry) => {
+          const [serverId, ...rest] = entry.split(':');
+          const publicKey = rest.join(':');
+          try {
+            await deleteClientEntry(publicKey, serverId || activeServerId);
+            return {entry, ok:true};
+          } catch (error) {
+            if (error?.status === 404) return {entry, ok:true, skipped:true};
+            throw error;
+          }
+        }));
+        const completed = results.filter(result => result.status === 'fulfilled').length;
+        const failed = results.find(result => result.status === 'rejected');
+        setBulkDeleteState(current => ({
+          ...current,
+          done: Math.min(current.total, current.done + completed),
+          last: failed ? String(failed.reason?.message || failed.reason || '') : current.last,
+        }));
+        if (failed) throw failed.reason;
+        await new Promise(resolve=>setTimeout(resolve, 0));
+      }
+      clearClientSelection();
+      await load();
+    } finally {
+      setBulkDeleteState({running:false,total:0,done:0,last:''});
     }
-    clearClientSelection();
-    await load();
   };
   const clientFieldValue = (client, field) => {
     const stat = clientPeerStat(client);
@@ -705,15 +890,27 @@ function App(){
     const serverClients = server.id === 'all' ? allServerStatsClients : allServerStatsClients.filter(client=>(client.serverId || 'local') === server.id);
     const active = serverClients.filter(client=>!client.blocked).length;
     const created = serverClients.filter(client=>client.createdAt).length;
+    const maxUsers = server.id === 'all' ? totalServerMaxUsers : Number(server.maxUsers || 0);
     const keys = new Set(serverClients.map(client=>client.PublicKey));
     const stats = allServerPeerStats.filter(peer=>keys.has(peer.publicKey));
     return {
       total: serverClients.length,
       active,
       created,
+      maxUsers,
       rx: stats.reduce((sum,peer)=>sum + peer.rx, 0),
       tx: stats.reduce((sum,peer)=>sum + peer.tx, 0),
     };
+  };
+  const serverUsageText = (server) => {
+    const stats = serverStats(server);
+    if (stats.maxUsers > 0) return `${stats.active} / ${stats.maxUsers}`;
+    return String(stats.active);
+  };
+  const serverUsageClass = (server) => {
+    const stats = serverStats(server);
+    if (!stats.maxUsers) return 'admin';
+    return stats.active >= stats.maxUsers ? 'danger' : 'ok';
   };
   const renderClientName=(client)=>{
     const key = clientRowKey(client);
@@ -762,10 +959,11 @@ function App(){
       <div className="detail-panel server-detail-panel">
         <div className="detail-grid">
           <div><span>{t('totalClients')}</span><strong>{stats.total}</strong></div>
-          <div><span>{t('activeClients')}</span><strong>{stats.active}</strong></div>
+          <div><span>{t('activeClients')}</span><strong>{stats.maxUsers > 0 ? `${stats.active} / ${stats.maxUsers}` : stats.active}</strong></div>
           <div><span>{t('createdClients')}</span><strong>{stats.created}</strong></div>
           <div><span>{t('received')}</span><strong>{formatMb(stats.rx)}</strong></div>
           <div><span>{t('sent')}</span><strong>{formatMb(stats.tx)}</strong></div>
+          <div><span>{t('limit')}</span><strong>{stats.maxUsers > 0 ? stats.maxUsers : '—'}</strong></div>
           <div><span>{t('status')}</span><strong>{serverConnection(server) ? t('active') : t('inactiveEdit')}</strong></div>
         </div>
         <div className="detail-key mono">{server.kind === 'local' || server.id === 'all' ? server.name : server.baseUrl}</div>
@@ -806,13 +1004,13 @@ function App(){
           </div>
         </div>
         <div className="client-form-grid">
-          <label>{t('clientOrOrder')}<input value={orderName} onChange={e=>setOrderName(e.target.value)} placeholder={t('orderNamePlaceholder')} /></label>
-          <label>{t('contact')}<input value={orderContact} onChange={e=>setOrderContact(e.target.value)} placeholder={t('contactPlaceholder')} /></label>
-          <label>{t('plan')}<select value={orderPlan} onChange={e=>setOrderPlan(e.target.value)}>
-            {clientTerms.filter(([value])=>value !== 'admin').map(([value,label])=><option key={value} value={t(label)}>{t(label)}</option>)}
+          <label>{t('orderLogin')}<input value={orderLogin} onChange={e=>setOrderLogin(e.target.value)} placeholder={t('orderLoginPlaceholder')} /></label>
+          <label>{t('orderEmail')}<input value={orderEmail} onChange={e=>setOrderEmail(e.target.value)} placeholder={t('orderEmailPlaceholder')} /></label>
+          <label>{t('term')}<select value={orderPlan} onChange={e=>setOrderPlan(e.target.value)}>
+            {clientTerms.filter(([value])=>value !== 'admin').map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
           </select></label>
         </div>
-        <button onClick={addOrder} disabled={!orderName.trim()}><Plus size={16}/>{t('purchaseAction')}</button>
+        <button onClick={()=>addOrder().catch(handleError)} disabled={!orderLogin.trim() || !orderEmail.trim()}><Plus size={16}/>{t('purchaseAction')}</button>
       </div>
     </section>
 
@@ -823,11 +1021,11 @@ function App(){
           <p>{t('allOrders')}: {orders.length}</p>
         </div>
       </div>
-      <table className="orders-table"><thead><tr><th>{t('clients')}</th><th>{t('contact')}</th><th>{t('plan')}</th><th>{t('status')}</th></tr></thead><tbody>
+      <table className="orders-table"><thead><tr><th>{t('orderLogin')}</th><th>{t('orderEmail')}</th><th>{t('term')}</th><th>{t('status')}</th></tr></thead><tbody>
         {orders.slice(0,5).map(o=><tr key={o.id}>
-          <td><strong>{o.name}</strong><small>{t('created')}: {o.created}</small></td>
-          <td>{o.contact||'—'}</td>
-          <td><span className="badge admin">{o.plan}</span></td>
+          <td><strong>{o.login}</strong><small>{t('created')}: {o.created}</small></td>
+          <td>{o.email||'—'}</td>
+          <td><span className="badge admin">{o.term}</span></td>
           <td><span className={`badge ${orderStatusClass(o.status)}`}>{t(normalizeOrderStatus(o.status))}</span></td>
         </tr>)}
       </tbody></table>
@@ -894,16 +1092,35 @@ function App(){
       <section className="section-head">
         <div><h2>{t('clients')}</h2><p>{t('clientsSub')}</p></div>
         <div className="actions">
-          <button className="secondary" onClick={selectAllVisibleClients}><CheckCircle2 size={16}/>{t('selectAll')}</button>
-          {selectedClientKeys.size > 0 && <>
-            <button className="secondary" onClick={clearClientSelection}><X size={16}/>{t('clearSelection')}</button>
-            <button className="danger" onClick={()=>deleteSelectedClients().catch(handleError)}><Trash2 size={16}/>{t('deleteSelected')}</button>
-          </>}
           <button className={activeServerId==='all'?'secondary active':'secondary'} onClick={()=>selectServer('all')}>{t('allServers')}</button>
           <button className="secondary" onClick={()=>setShowImportForm(true)}><Upload size={16}/>{t('importConf')}</button>
           <button onClick={()=>setShowClientForm(true)}><Plus size={16}/>{t('createClient')}</button>
         </div>
       </section>
+
+      {selectedClientKeys.size > 0 && <details className="selection-drop" open>
+        <summary>
+          <div className="selection-drop-summary">
+            <strong>{t('selectedClients')}: {selectedClientKeys.size}</strong>
+            <span>{bulkDeleteState.running ? `${t('deleted')}: ${bulkDeleteState.done} / ${bulkDeleteState.total}` : t('bulkActions')}</span>
+          </div>
+          <ChevronDown size={16}/>
+        </summary>
+        <div className="selection-drop-body">
+          <div className="selection-progress">
+            <div className="selection-progress-track">
+              <span style={{width: `${bulkDeleteState.total ? (bulkDeleteState.done / bulkDeleteState.total) * 100 : 0}%`}} />
+            </div>
+            <small>{bulkDeleteState.running ? `${t('deleting')}: ${bulkDeleteState.done}/${bulkDeleteState.total}` : t('bulkReady')}</small>
+          </div>
+          <div className="selection-drop-actions">
+            <button className="secondary" onClick={selectAllVisibleClients}><CheckCircle2 size={16}/>{t('selectAll')}</button>
+            <button className="secondary" onClick={clearClientSelection}><X size={16}/>{t('clearSelection')}</button>
+            <button className="danger" disabled={bulkDeleteState.running} onClick={()=>deleteSelectedClients().catch(handleError)}><Trash2 size={16}/>{t('deleteSelected')}</button>
+          </div>
+          {bulkDeleteState.last && <div className="selection-drop-error">{bulkDeleteState.last}</div>}
+        </div>
+      </details>}
 
       {showImportForm && <section className="card add-panel">
         <div className="panel-head">
@@ -1009,22 +1226,22 @@ function App(){
       <section className="card add-panel">
         <div className="panel-head"><div><h2>{t('newOrder')}</h2><p>{t('ordersSub')}</p></div></div>
         <div className="order-form-grid">
-          <label>{t('clients')}<input value={orderName} onChange={e=>setOrderName(e.target.value)} placeholder={t('orderNamePlaceholder')} /></label>
-          <label>{t('contact')}<input value={orderContact} onChange={e=>setOrderContact(e.target.value)} placeholder={t('contactPlaceholder')} /></label>
-          <label>{t('plan')}<select value={orderPlan} onChange={e=>setOrderPlan(e.target.value)}>
+          <label>{t('orderLogin')}<input value={orderLogin} onChange={e=>setOrderLogin(e.target.value)} placeholder={t('orderLoginPlaceholder')} /></label>
+          <label>{t('orderEmail')}<input value={orderEmail} onChange={e=>setOrderEmail(e.target.value)} placeholder={t('orderEmailPlaceholder')} /></label>
+          <label>{t('term')}<select value={orderPlan} onChange={e=>setOrderPlan(e.target.value)}>
             <option>{t('oneMonth')}</option><option>{t('threeMonths')}</option><option>{t('sixMonths')}</option><option>{t('oneYear')}</option>
           </select></label>
         </div>
-        <button onClick={addOrder} disabled={!orderName.trim()}><Plus size={16}/>{t('add')}</button>
+        <button onClick={()=>addOrder().catch(handleError)} disabled={!orderLogin.trim() || !orderEmail.trim()}><Plus size={16}/>{t('add')}</button>
       </section>
 
       <section className="card">
         <div className="panel-head"><div><h2>{t('recentOrders')}</h2><p>{t('allOrders')}: {orders.length}</p></div></div>
-        {orders.length === 0 ? <p>{t('noOrders')}</p> : <table className="orders-table"><thead><tr><th>{t('clients')}</th><th>{t('contact')}</th><th>{t('plan')}</th><th>{t('status')}</th><th></th></tr></thead><tbody>
+        {orders.length === 0 ? <p>{t('noOrders')}</p> : <table className="orders-table"><thead><tr><th>{t('orderLogin')}</th><th>{t('orderEmail')}</th><th>{t('term')}</th><th>{t('status')}</th><th></th></tr></thead><tbody>
           {orders.map(o=>{ const normalizedStatus = normalizeOrderStatus(o.status); return <tr key={o.id}>
-            <td><strong>{o.name}</strong><small>{t('created')}: {o.created}</small></td>
-            <td>{o.contact||'—'}</td>
-            <td><span className="badge admin">{o.plan}</span></td>
+            <td><strong>{o.login}</strong><small>{t('created')}: {o.created}</small></td>
+            <td>{o.email||'—'}</td>
+            <td><span className="badge admin">{o.term}</span></td>
             <td>
               <span className={`badge ${orderStatusClass(o.status)}`}>{t(normalizedStatus)}</span>
               <select value={normalizedStatus} onChange={e=>updateOrder(o.id,e.target.value)} aria-label={t('status')}>
@@ -1047,7 +1264,7 @@ function App(){
       </section>
       <section className="server-summary">
         <div className="card metric server-metric"><Server size={22}/><span>{t('servers')}</span><strong>{servers.length}</strong></div>
-        <div className="card metric server-metric"><Activity size={22}/><span>{t('active')}</span><strong>{activeServerCount}</strong></div>
+        <div className="card metric server-metric"><Activity size={22}/><span>{t('activeClients')}</span><strong>{totalServerMaxUsers > 0 ? `${activeClientTotal} / ${totalServerMaxUsers}` : activeClientTotal}</strong></div>
         <div className="card metric server-metric"><Users size={22}/><span>{t('clients')}</span><strong>{allServerStatsClients.length}</strong></div>
         <div className="card metric server-metric"><ShoppingCart size={22}/><span>{t('traffic')}</span><strong>{formatMb(allServerTotalRx + allServerTotalTx)}</strong></div>
       </section>
@@ -1060,40 +1277,37 @@ function App(){
           <label>{t('title')}<input value={serverName} onChange={e=>setServerName(e.target.value)} placeholder={t('serverNamePlaceholder')} /></label>
           {!editingLocalServer && <label>{t('panelUrl')}<input value={serverBaseUrl} onChange={e=>setServerBaseUrl(e.target.value)} placeholder={t('panelUrlPlaceholder')} /></label>}
           {!editingLocalServer && <label>{t('token')}<input value={serverToken} onChange={e=>setServerToken(e.target.value)} placeholder={t('token')} type="password" /></label>}
+          <label>{t('limit')}<input value={serverMaxUsers} onChange={e=>setServerMaxUsers(e.target.value)} placeholder="0" type="number" min="0" inputMode="numeric" /></label>
         </div>
         <button onClick={()=>addServer().catch(handleError)}><Plus size={16}/>{t('saveServer')}</button>
       </section>}
       <section className="card">
-        <table className="server-table"><thead><tr><th>{t('title')}</th><th>{t('endpoint')}</th><th>{t('token')}</th><th>{t('status')}</th><th></th></tr></thead><tbody>
+        <table className="server-table"><thead><tr><th>{t('title')}</th><th>{t('endpoint')}</th><th>{t('token')}</th><th>{t('status')}</th><th>{t('activeClients')}</th><th>{t('limit')}</th><th></th></tr></thead><tbody>
           {(()=>{ const server = {id:'all', name:t('allServers'), baseUrl:'', kind:'aggregate', status:'online'}; return <React.Fragment key="all"><tr className={`clickable-row ${activeServerId==='all'?'selected-row':''} ${expandedServerId === 'all' ? 'expanded' : ''}`} onClick={()=>setExpandedServerId(expandedServerId === 'all' ? '' : 'all')}>
             <td><strong>{t('allServers')}</strong>{activeServerId==='all' && <small>{t('activeServer')}</small>}</td>
             <td className="mono">—</td>
             <td><span className="badge ok">{t('set')}</span></td>
             <td><span className="badge ok">{t('active')}</span></td>
+            <td><span className={`badge ${serverUsageClass(server)}`}>{serverUsageText(server)}</span></td>
+            <td className="mono">—</td>
             <td className="table-actions"><button className="secondary icon-button" title={t('details')} onClick={(event)=>{ event.stopPropagation(); setExpandedServerId(expandedServerId === 'all' ? '' : 'all'); }}><ChevronDown className={expandedServerId === 'all' ? 'rotated' : ''} size={16}/></button><button className="secondary" onClick={(event)=>{ event.stopPropagation(); selectServer('all'); }}>{t('select')}</button></td>
-          </tr>{expandedServerId === 'all' && renderServerDetails(server, 5)}</React.Fragment>; })()}
+          </tr>{expandedServerId === 'all' && renderServerDetails(server, 7)}</React.Fragment>; })()}
           {servers.map(s=><React.Fragment key={s.id}><tr className={`clickable-row ${s.id===activeServerId?'selected-row':''} ${expandedServerId === s.id ? 'expanded' : ''}`} onClick={()=>setExpandedServerId(expandedServerId === s.id ? '' : s.id)}>
             <td><strong>{s.name}</strong>{s.id===activeServerId && <small>{t('activeServer')}</small>}</td>
             <td className="mono">{s.kind === 'local' ? t('localServer') : s.baseUrl}</td>
             <td>{s.kind === 'local' ? <span className="badge ok">{t('set')}</span> : (s.token ? <span className="badge ok">{t('set')}</span> : <span className="badge muted">{t('notSet')}</span>)}</td>
             <td>{serverConnection(s)?<span className="badge ok">{t('active')}</span>:<span className="badge warn">{t('inactiveEdit')}</span>}</td>
+            <td><span className={`badge ${serverUsageClass(s)}`}>{serverUsageText(s)}</span></td>
+            <td>
+              {s.id === 'all' ? '—' : <input className="server-limit-input" type="number" min="0" inputMode="numeric" value={serverLimitValue(s)} onChange={e=>setServerLimitDrafts(current=>({...current, [s.id]: e.target.value}))} onBlur={e=>saveServerLimit(s, e.target.value).catch(handleError)} onKeyDown={e=>{ if (e.key === 'Enter') e.currentTarget.blur(); }} />}
+            </td>
             <td className="table-actions"><button className="secondary icon-button" title={t('details')} onClick={(event)=>{ event.stopPropagation(); setExpandedServerId(expandedServerId === s.id ? '' : s.id); }}><ChevronDown className={expandedServerId === s.id ? 'rotated' : ''} size={16}/></button><button className="secondary" onClick={(event)=>{ event.stopPropagation(); selectServer(s.id); }}>{t('select')}</button><button className="secondary icon-button" title={t('edit')} onClick={(event)=>{ event.stopPropagation(); editServer(s); }}><Pencil size={16}/></button>{s.id !== 'local' && <button className="danger icon-button" title={t('deleteServer')} onClick={(event)=>{ event.stopPropagation(); deleteServer(s.id); }}><Trash2 size={16}/></button>}</td>
-          </tr>{expandedServerId === s.id && renderServerDetails(s, 5)}</React.Fragment>)}
+          </tr>{expandedServerId === s.id && renderServerDetails(s, 7)}</React.Fragment>)}
         </tbody></table>
       </section>
       <section className="card"><h2>{t('dumpTitle')}</h2><pre>{dump||t('noDump')}</pre></section>
     </>}
 
-    {selectedClientKeys.size > 0 && <section className="selection-bar" aria-live="polite">
-      <div className="selection-bar-left">
-        <div className="selection-count">{t('selectedClients')}: <strong>{selectedClientKeys.size}</strong></div>
-      </div>
-      <div className="selection-bar-actions">
-        <button className="secondary" onClick={selectAllVisibleClients}><CheckCircle2 size={16}/>{t('selectAll')}</button>
-        <button className="secondary" onClick={clearClientSelection}><X size={16}/>{t('clearSelection')}</button>
-        <button className="danger" onClick={()=>deleteSelectedClients().catch(handleError)}><Trash2 size={16}/>{t('deleteSelected')}</button>
-      </div>
-    </section>}
   </main>
 }
 

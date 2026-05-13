@@ -2,13 +2,15 @@ from fastapi import Cookie, FastAPI, HTTPException, Header, Response
 from fastapi import Query
 from pydantic import BaseModel
 import base64, configparser, ipaddress, json, os, re, secrets, shutil, subprocess, time
-from datetime import date, timedelta
+from threading import RLock
+from datetime import date, datetime, timedelta
 import urllib.request
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
 from .config import *
 
 app = FastAPI(title="AmneziaWG Admin")
+data_lock = RLock()
 
 class ClientCreate(BaseModel):
     name: str
@@ -29,11 +31,21 @@ class ServerCreate(BaseModel):
     name: str
     baseUrl: str
     token: str = ""
+    maxUsers: int | None = None
 
 class ServerUpdate(BaseModel):
     name: str | None = None
     baseUrl: str | None = None
     token: str | None = None
+    maxUsers: int | None = None
+
+class OrderCreate(BaseModel):
+    login: str
+    email: str
+    term: str = "1 месяц"
+
+class OrderUpdate(BaseModel):
+    status: str | None = None
 
 def auth(authorization: str | None, awg_panel_session: str | None):
     bearer_ok = authorization == f"Bearer {ADMIN_TOKEN}"
@@ -243,6 +255,29 @@ def save_local_server_settings(settings: dict):
         json.dump(settings, f, ensure_ascii=False, indent=2, sort_keys=True)
 
 
+def orders_path() -> str:
+    os.makedirs(os.path.dirname(ORDERS_PATH), exist_ok=True)
+    return ORDERS_PATH
+
+
+def load_orders() -> list[dict]:
+    path = orders_path()
+    if not os.path.exists(path):
+        return []
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if isinstance(data, dict):
+        data = data.get("orders", [])
+    if not isinstance(data, list):
+        return []
+    return [order for order in data if isinstance(order, dict)]
+
+
+def save_orders(orders: list[dict]):
+    with open(orders_path(), "w", encoding="utf-8") as f:
+        json.dump(orders, f, ensure_ascii=False, indent=2, sort_keys=True)
+
+
 def normalize_panel_url(value: str) -> str:
     url = value.strip().rstrip("/")
     if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
@@ -253,12 +288,22 @@ def normalize_panel_url(value: str) -> str:
     return url
 
 
+def normalize_max_users(value: int | None) -> int:
+    if value is None:
+        return 0
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
 def server_identity(server: dict) -> dict:
     return {
         "id": server.get("id", ""),
         "name": server.get("name", ""),
         "baseUrl": server.get("baseUrl", ""),
         "token": server.get("token", ""),
+        "maxUsers": normalize_max_users(server.get("maxUsers")),
     }
 
 
@@ -269,6 +314,7 @@ def local_server_identity() -> dict:
         "name": settings.get("name") or LOCAL_SERVER_NAME,
         "baseUrl": "local",
         "token": "",
+        "maxUsers": normalize_max_users(settings.get("maxUsers")),
         "kind": "local",
         "status": "online",
     }
@@ -452,30 +498,31 @@ def peer_from_block(block: str) -> dict:
 
 
 def enforce_expired_clients() -> list[dict]:
-    text = read_cfg()
-    chunks = re.split(r"\n(?=\[Peer\])", text)
-    kept = []
-    expired = load_expired_clients()
-    changed = False
-    for chunk in chunks:
-        peer = peer_from_block(chunk) if chunk.strip().startswith("[Peer]") else {}
-        public_key = peer.get("PublicKey", "").strip()
-        if public_key and is_expired_date(peer.get("expiresAt")):
-            previous = expired.get(public_key, {})
-            peer["raw"] = chunk.strip()
-            peer["blocked"] = True
-            peer["status"] = "not_renewed"
-            peer["reason"] = "subscription_expired"
-            peer["blockedAt"] = previous.get("blockedAt") or date.today().isoformat()
-            expired[public_key] = peer
-            changed = True
-            continue
-        kept.append(chunk)
-    if changed:
-        write_cfg("\n".join(kept))
-        save_expired_clients(expired)
-        reload_service()
-    return expired_clients_list()
+    with data_lock:
+        text = read_cfg()
+        chunks = re.split(r"\n(?=\[Peer\])", text)
+        kept = []
+        expired = load_expired_clients()
+        changed = False
+        for chunk in chunks:
+            peer = peer_from_block(chunk) if chunk.strip().startswith("[Peer]") else {}
+            public_key = peer.get("PublicKey", "").strip()
+            if public_key and is_expired_date(peer.get("expiresAt")):
+                previous = expired.get(public_key, {})
+                peer["raw"] = chunk.strip()
+                peer["blocked"] = True
+                peer["status"] = "not_renewed"
+                peer["reason"] = "subscription_expired"
+                peer["blockedAt"] = previous.get("blockedAt") or date.today().isoformat()
+                expired[public_key] = peer
+                changed = True
+                continue
+            kept.append(chunk)
+        if changed:
+            write_cfg("\n".join(kept))
+            save_expired_clients(expired)
+            reload_service()
+        return expired_clients_list()
 
 
 def next_ip(interface_address: str, peers: list[dict]) -> str:
@@ -932,66 +979,137 @@ def servers(authorization: str | None = Header(None), awg_panel_session: str | N
 @app.post("/api/servers")
 def create_server(body: ServerCreate, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
     auth(authorization, awg_panel_session)
-    name = body.name.strip()
-    base_url = normalize_panel_url(body.baseUrl)
-    token = body.token.strip()
-    if not name:
-        raise HTTPException(400, "Server name is required")
-    if not token:
-        raise HTTPException(400, "Server token is required")
-    server = {
-        "id": secrets.token_hex(8),
-        "name": name,
-        "baseUrl": base_url,
-        "token": token,
-    }
-    servers = load_servers()
-    servers.append(server)
-    save_servers(servers)
-    return {"server": {**server_identity(server), "kind": "remote", "status": probe_panel(server)}}
+    with data_lock:
+        name = body.name.strip()
+        base_url = normalize_panel_url(body.baseUrl)
+        token = body.token.strip()
+        if not name:
+            raise HTTPException(400, "Server name is required")
+        if not token:
+            raise HTTPException(400, "Server token is required")
+        server = {
+            "id": secrets.token_hex(8),
+            "name": name,
+            "baseUrl": base_url,
+            "token": token,
+            "maxUsers": normalize_max_users(body.maxUsers),
+        }
+        servers = load_servers()
+        servers.append(server)
+        save_servers(servers)
+        return {"server": {**server_identity(server), "kind": "remote", "status": probe_panel(server)}}
 
 
 @app.put("/api/servers/{server_id}")
 def update_server(server_id: str, body: ServerUpdate, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
     auth(authorization, awg_panel_session)
-    if server_id == LOCAL_SERVER_ID:
-        name = (body.name or "").strip()
-        if not name:
-            raise HTTPException(400, "Server name is required")
-        save_local_server_settings({"name": name})
-        return {"server": local_server_identity()}
-    servers = load_servers()
-    for index, server in enumerate(servers):
-        if server.get("id") != server_id:
-            continue
-        updated = dict(server)
-        if body.name is not None:
-            updated["name"] = body.name.strip() or server.get("name", "")
-        if body.baseUrl is not None:
-            updated["baseUrl"] = normalize_panel_url(body.baseUrl)
-        if body.token is not None:
-            updated["token"] = body.token.strip()
-        if not updated.get("name"):
-            raise HTTPException(400, "Server name is required")
-        if not updated.get("baseUrl"):
-            raise HTTPException(400, "Server URL is required")
-        servers[index] = updated
-        save_servers(servers)
-        return {"server": {**server_identity(updated), "kind": "remote", "status": probe_panel(updated)}}
-    raise HTTPException(404, "Server not found")
+    with data_lock:
+        if server_id == LOCAL_SERVER_ID:
+            settings = load_local_server_settings()
+            name = (body.name.strip() if body.name is not None else settings.get("name") or LOCAL_SERVER_NAME).strip()
+            if not name:
+                raise HTTPException(400, "Server name is required")
+            next_settings = {
+                "name": name,
+                "maxUsers": normalize_max_users(body.maxUsers if body.maxUsers is not None else settings.get("maxUsers")),
+            }
+            save_local_server_settings(next_settings)
+            return {"server": local_server_identity()}
+        servers = load_servers()
+        for index, server in enumerate(servers):
+            if server.get("id") != server_id:
+                continue
+            updated = dict(server)
+            if body.name is not None:
+                updated["name"] = body.name.strip() or server.get("name", "")
+            if body.baseUrl is not None:
+                updated["baseUrl"] = normalize_panel_url(body.baseUrl)
+            if body.token is not None:
+                updated["token"] = body.token.strip()
+            if body.maxUsers is not None:
+                updated["maxUsers"] = normalize_max_users(body.maxUsers)
+            if not updated.get("name"):
+                raise HTTPException(400, "Server name is required")
+            if not updated.get("baseUrl"):
+                raise HTTPException(400, "Server URL is required")
+            servers[index] = updated
+            save_servers(servers)
+            return {"server": {**server_identity(updated), "kind": "remote", "status": probe_panel(updated)}}
+        raise HTTPException(404, "Server not found")
 
 
 @app.delete("/api/servers/{server_id}")
 def delete_server(server_id: str, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
     auth(authorization, awg_panel_session)
-    if server_id == LOCAL_SERVER_ID:
-        raise HTTPException(400, "Local server cannot be deleted")
-    servers = load_servers()
-    next_servers = [server for server in servers if server.get("id") != server_id]
-    if len(next_servers) == len(servers):
-        raise HTTPException(404, "Server not found")
-    save_servers(next_servers)
-    return {"ok": True}
+    with data_lock:
+        if server_id == LOCAL_SERVER_ID:
+            raise HTTPException(400, "Local server cannot be deleted")
+        servers = load_servers()
+        next_servers = [server for server in servers if server.get("id") != server_id]
+        if len(next_servers) == len(servers):
+            raise HTTPException(404, "Server not found")
+        save_servers(next_servers)
+        return {"ok": True}
+
+
+@app.get("/api/orders")
+def orders(authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+    auth(authorization, awg_panel_session)
+    with data_lock:
+        return {"orders": load_orders()}
+
+
+@app.post("/api/orders")
+def create_order(body: OrderCreate):
+    with data_lock:
+        login = body.login.strip()
+        email = body.email.strip()
+        term = body.term.strip() or "1 месяц"
+        if not login:
+            raise HTTPException(400, "Login is required")
+        if not email:
+            raise HTTPException(400, "Email is required")
+        order = {
+            "id": secrets.token_hex(8),
+            "login": login,
+            "email": email,
+            "term": term,
+            "status": "active",
+            "created": datetime.now().isoformat(timespec="seconds"),
+            "createdAt": datetime.now().isoformat(timespec="seconds"),
+        }
+        orders = load_orders()
+        orders.insert(0, order)
+        save_orders(orders)
+        return {"order": order}
+
+
+@app.patch("/api/orders/{order_id}")
+def update_order(order_id: str, body: OrderUpdate, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+    auth(authorization, awg_panel_session)
+    with data_lock:
+        orders = load_orders()
+        for index, order in enumerate(orders):
+            if order.get("id") != order_id:
+                continue
+            if body.status is not None:
+                order["status"] = body.status.strip() or order.get("status", "active")
+            orders[index] = order
+            save_orders(orders)
+            return {"order": order}
+        raise HTTPException(404, "Order not found")
+
+
+@app.delete("/api/orders/{order_id}")
+def delete_order(order_id: str, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+    auth(authorization, awg_panel_session)
+    with data_lock:
+        orders = load_orders()
+        next_orders = [order for order in orders if order.get("id") != order_id]
+        if len(next_orders) == len(orders):
+            raise HTTPException(404, "Order not found")
+        save_orders(next_orders)
+        return {"ok": True}
 
 
 @app.get("/api/clients")
@@ -1034,22 +1152,23 @@ def create_client(
     server = get_server(server_id)
     if server is not None:
         return panel_json(server, "POST", "/clients", payload=body.model_dump())
-    name = body.name.strip()
-    if not name:
-        raise HTTPException(400, "Client name is required")
-    text = read_cfg()
-    interface = parse_interface(text)
-    peers = parse_peers(text)
-    private_key = awg(["genkey"])
-    public_key = awg(["pubkey"], input_text=private_key)
-    expired = load_expired_clients()
-    expired.pop(public_key, None)
-    save_expired_clients(expired)
-    psk = awg(["genpsk"])
-    ip = next_ip(interface.get("Address", "10.8.1.1/24"), peers)
-    expires_at = expiration_date(body.term)
-    expires_line = f"# Expires: {expires_at}\n" if expires_at else ""
-    peer_block = f"""
+    with data_lock:
+        name = body.name.strip()
+        if not name:
+            raise HTTPException(400, "Client name is required")
+        text = read_cfg()
+        interface = parse_interface(text)
+        peers = parse_peers(text)
+        private_key = awg(["genkey"])
+        public_key = awg(["pubkey"], input_text=private_key)
+        expired = load_expired_clients()
+        expired.pop(public_key, None)
+        save_expired_clients(expired)
+        psk = awg(["genpsk"])
+        ip = next_ip(interface.get("Address", "10.8.1.1/24"), peers)
+        expires_at = expiration_date(body.term)
+        expires_line = f"# Expires: {expires_at}\n" if expires_at else ""
+        peer_block = f"""
 
 [Peer]
 # Name: {name}
@@ -1057,20 +1176,20 @@ def create_client(
 PresharedKey = {psk}
 AllowedIPs = {ip}/32
 """
-    write_cfg(text.rstrip() + peer_block)
-    client_table_upsert(public_key, name, f"{ip}/32")
-    reload_service()
-    server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
-    cfg = client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
-    store_client_export(public_key, name, cfg)
-    return {
-        "name": name,
-        "publicKey": public_key,
-        "address": f"{ip}/32",
-        "expiresAt": expires_at,
-        "config": cfg,
-        "configUrl": f"/api/client-config?public_key={public_key}",
-    }
+        write_cfg(text.rstrip() + peer_block)
+        client_table_upsert(public_key, name, f"{ip}/32")
+        reload_service()
+        server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
+        cfg = client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
+        store_client_export(public_key, name, cfg)
+        return {
+            "name": name,
+            "publicKey": public_key,
+            "address": f"{ip}/32",
+            "expiresAt": expires_at,
+            "config": cfg,
+            "configUrl": f"/api/client-config?public_key={public_key}",
+        }
 
 
 @app.post("/api/client-import")
@@ -1084,72 +1203,74 @@ def import_client(
     server = get_server(server_id)
     if server is not None:
         return panel_json(server, "POST", "/client-import", payload=body.model_dump())
-    config_text = body.config.strip()
-    if not config_text:
-        raise HTTPException(400, "Client config is required")
-    public_key = public_key_from_client_config(config_text)
-    expired = load_expired_clients()
-    expired.pop(public_key, None)
-    save_expired_clients(expired)
-    name = body.name.strip() or client_name_from_config(config_text) or public_key
-    store_client_export(public_key, name, config_text)
-    client_table_upsert(public_key, name)
-    return {
-        "name": name,
-        "publicKey": public_key,
-        "config": config_text.rstrip() + "\n",
-        "configUrl": f"/api/client-config?public_key={public_key}",
-    }
+    with data_lock:
+        config_text = body.config.strip()
+        if not config_text:
+            raise HTTPException(400, "Client config is required")
+        public_key = public_key_from_client_config(config_text)
+        expired = load_expired_clients()
+        expired.pop(public_key, None)
+        save_expired_clients(expired)
+        name = body.name.strip() or client_name_from_config(config_text) or public_key
+        store_client_export(public_key, name, config_text)
+        client_table_upsert(public_key, name)
+        return {
+            "name": name,
+            "publicKey": public_key,
+            "config": config_text.rstrip() + "\n",
+            "configUrl": f"/api/client-config?public_key={public_key}",
+        }
 
 def delete_client_by_key(public_key: str, server_id: str | None = None):
     server = get_server(server_id)
     if server is not None:
         return panel_json(server, "DELETE", f"/clients?public_key={quote(public_key.strip(), safe='')}")
-    expired = load_expired_clients()
-    expired_removed = expired.pop(public_key.strip(), None)
-    if expired_removed is not None:
-        save_expired_clients(expired)
-    text = read_cfg()
-    target = public_key.strip()
-    chunks = re.split(r"\n(?=\[Peer\])", text)
-    kept = []
-    found = False
-    removed_name = ""
-    removed_allowed_ips = ""
-    for ch in chunks:
-        if ch.strip().startswith("[Peer]"):
-            peer_data = {}
-            for line in ch.splitlines():
-                if "=" in line and not line.strip().startswith("#"):
-                    k, v = line.split("=", 1)
-                    peer_data[k.strip()] = v.strip()
-            if peer_data.get("PublicKey", "").strip() == target:
-                found = True
-                removed_name = re.search(r"#\s*Name:\s*(.+)", ch)
-                removed_name = removed_name.group(1).strip() if removed_name else ""
-                removed_allowed_ips = peer_data.get("AllowedIPs", "")
-                continue
-        kept.append(ch)
-    export_path = client_export_path(target)
-    export_existed = os.path.exists(export_path)
-    if not found and expired_removed is None and not export_existed:
-        raise HTTPException(404, "Peer not found")
-    if found:
-        write_cfg("\n".join(kept))
-    if export_existed:
-        os.remove(export_path)
-    if expired_removed is not None and not removed_name:
-        removed_name = expired_removed.get("name", "")
-    if removed_name:
-        named_path = f"{CLIENTS_DIR}/{safe_name(removed_name)}.conf"
-        if named_path != export_path and os.path.exists(named_path):
-            os.remove(named_path)
-    if expired_removed is not None and not removed_allowed_ips:
-        removed_allowed_ips = expired_removed.get("AllowedIPs", "")
-    client_table_delete(target, removed_allowed_ips)
-    if found:
-        reload_service()
-    return {"ok": True}
+    with data_lock:
+        expired = load_expired_clients()
+        expired_removed = expired.pop(public_key.strip(), None)
+        if expired_removed is not None:
+            save_expired_clients(expired)
+        text = read_cfg()
+        target = public_key.strip()
+        chunks = re.split(r"\n(?=\[Peer\])", text)
+        kept = []
+        found = False
+        removed_name = ""
+        removed_allowed_ips = ""
+        for ch in chunks:
+            if ch.strip().startswith("[Peer]"):
+                peer_data = {}
+                for line in ch.splitlines():
+                    if "=" in line and not line.strip().startswith("#"):
+                        k, v = line.split("=", 1)
+                        peer_data[k.strip()] = v.strip()
+                if peer_data.get("PublicKey", "").strip() == target:
+                    found = True
+                    removed_name = re.search(r"#\s*Name:\s*(.+)", ch)
+                    removed_name = removed_name.group(1).strip() if removed_name else ""
+                    removed_allowed_ips = peer_data.get("AllowedIPs", "")
+                    continue
+            kept.append(ch)
+        export_path = client_export_path(target)
+        export_existed = os.path.exists(export_path)
+        if not found and expired_removed is None and not export_existed:
+            raise HTTPException(404, "Peer not found")
+        if found:
+            write_cfg("\n".join(kept))
+        if export_existed:
+            os.remove(export_path)
+        if expired_removed is not None and not removed_name:
+            removed_name = expired_removed.get("name", "")
+        if removed_name:
+            named_path = f"{CLIENTS_DIR}/{safe_name(removed_name)}.conf"
+            if named_path != export_path and os.path.exists(named_path):
+                os.remove(named_path)
+        if expired_removed is not None and not removed_allowed_ips:
+            removed_allowed_ips = expired_removed.get("AllowedIPs", "")
+        client_table_delete(target, removed_allowed_ips)
+        if found:
+            reload_service()
+        return {"ok": True}
 
 
 @app.delete("/api/clients")
@@ -1178,28 +1299,29 @@ def update_client_by_key(public_key: str, body: ClientUpdate, server_id: str | N
     server = get_server(server_id)
     if server is not None:
         return panel_json(server, "PATCH", f"/clients?public_key={quote(public_key.strip(), safe='')}", payload=body.model_dump())
-    new_name = body.name.strip()
-    if not new_name:
-        raise HTTPException(400, "Client name is required")
-    target = public_key.strip()
-    expired = load_expired_clients()
-    if target in expired:
-        old_name = expired[target].get("name", "")
-        expired[target]["name"] = new_name
-        save_expired_clients(expired)
+    with data_lock:
+        new_name = body.name.strip()
+        if not new_name:
+            raise HTTPException(400, "Client name is required")
+        target = public_key.strip()
+        expired = load_expired_clients()
+        if target in expired:
+            old_name = expired[target].get("name", "")
+            expired[target]["name"] = new_name
+            save_expired_clients(expired)
+            rename_stored_client_export(target, old_name, new_name)
+            client_table_upsert(target, new_name, expired[target].get("AllowedIPs", ""))
+            return {"ok": True, "publicKey": target, "name": new_name}
+        result = rename_peer_block(read_cfg(), target, new_name)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Client not found")
+        next_text, old_name = result
+        write_cfg(next_text)
         rename_stored_client_export(target, old_name, new_name)
-        client_table_upsert(target, new_name, expired[target].get("AllowedIPs", ""))
+        updated_peer = peer_from_block(next((chunk for chunk in re.split(r"\n(?=\[Peer\])", next_text) if target in chunk), ""))
+        client_table_upsert(target, new_name, updated_peer.get("AllowedIPs", ""))
+        reload_service()
         return {"ok": True, "publicKey": target, "name": new_name}
-    result = rename_peer_block(read_cfg(), target, new_name)
-    if result is None:
-        raise HTTPException(status_code=404, detail="Client not found")
-    next_text, old_name = result
-    write_cfg(next_text)
-    rename_stored_client_export(target, old_name, new_name)
-    updated_peer = peer_from_block(next((chunk for chunk in re.split(r"\n(?=\[Peer\])", next_text) if target in chunk), ""))
-    client_table_upsert(target, new_name, updated_peer.get("AllowedIPs", ""))
-    reload_service()
-    return {"ok": True, "publicKey": target, "name": new_name}
 
 
 @app.patch("/api/clients")

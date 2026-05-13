@@ -126,6 +126,47 @@ main.public-page{max-width:1280px;padding:24px 24px 36px}
 .toolbar-field select{min-width:180px}
 .selection-hint{align-self:center;color:var(--muted);font-size:13px;font-weight:700}
 .clients-toolbar-actions button{min-width:132px}
+.selection-drop{
+  margin:14px 0 18px;
+  border:1px solid #39507a;
+  border-radius:10px;
+  background:linear-gradient(180deg,rgba(13,20,36,.94),rgba(10,15,28,.96));
+  box-shadow:0 16px 38px rgba(0,0,0,.26);
+  overflow:hidden;
+}
+.selection-drop summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 14px;
+  cursor:pointer;
+  list-style:none;
+}
+.selection-drop summary::-webkit-details-marker{display:none}
+.selection-drop-summary{display:grid;gap:3px;min-width:0}
+.selection-drop-summary strong{font-size:14px;line-height:1.2}
+.selection-drop-summary span{color:var(--muted);font-size:12px;font-weight:700}
+.selection-drop-body{display:grid;gap:12px;padding:0 14px 14px}
+.selection-progress{display:grid;gap:8px}
+.selection-progress-track{
+  width:100%;
+  height:8px;
+  border-radius:999px;
+  overflow:hidden;
+  background:#11182a;
+  border:1px solid #263352;
+}
+.selection-progress-track span{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg,#22c55e,#34d399);
+  transition:width .18s ease;
+}
+.selection-drop-actions{display:flex;gap:8px;flex-wrap:wrap}
+.selection-drop-actions button{min-width:0}
+.selection-drop-error{color:#fecaca;font-size:13px;font-weight:700}
 .selection-bar{
   position:fixed;
   left:50%;
@@ -169,13 +210,16 @@ main.public-page{max-width:1280px;padding:24px 24px 36px}
   min-width:100%;
 }
 .orders-table{min-width:780px}
-.server-table th:nth-child(1),.server-table td:nth-child(1){width:24%}
-.server-table th:nth-child(2),.server-table td:nth-child(2){width:30%}
-.server-table th:nth-child(3),.server-table td:nth-child(3){width:12%}
-.server-table th:nth-child(4),.server-table td:nth-child(4){width:14%}
-.server-table th:nth-child(5),.server-table td:nth-child(5){width:20%}
+.server-table th:nth-child(1),.server-table td:nth-child(1){width:20%}
+.server-table th:nth-child(2),.server-table td:nth-child(2){width:24%}
+.server-table th:nth-child(3),.server-table td:nth-child(3){width:10%}
+.server-table th:nth-child(4),.server-table td:nth-child(4){width:12%}
+.server-table th:nth-child(5),.server-table td:nth-child(5){width:13%}
+.server-table th:nth-child(6),.server-table td:nth-child(6){width:9%}
+.server-table th:nth-child(7),.server-table td:nth-child(7){width:12%}
 .server-table .selected-row{background:#1b2641}
 .server-table th:last-child,.server-table td:last-child{width:220px}
+.server-limit-input{width:100%;min-width:0;padding:9px 10px;text-align:center}
 .table-actions{position:relative;white-space:nowrap}
 .table-actions,.client-actions{display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap}
 .server-table .table-actions{flex-wrap:nowrap}
@@ -358,6 +402,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .section-head .actions,.panel-head .actions{width:100%;justify-content:flex-start}
   main.selection-active{padding-bottom:152px}
   .selection-bar{width:calc(100% - 20px)}
+  .selection-drop-actions button{flex:1 1 150px}
 }
 @media(max-width:800px){
   main{padding:18px}
@@ -382,7 +427,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .card{padding:16px}
   .client-table{min-width:1000px}
   .expired-client-table{min-width:1080px}
-  .server-table{min-width:900px}
+  .server-table{min-width:980px}
   .client-actions{justify-content:start}
   .table-actions button{margin-top:0}
   .detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -392,6 +437,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .selection-bar-left{justify-content:space-between}
   .selection-bar-actions{justify-content:stretch}
   .selection-bar-actions button{flex:1 1 120px}
+  .selection-drop summary,.selection-drop-body{padding-left:12px;padding-right:12px}
+  .selection-drop-actions button{flex-basis:100%}
   .public-hero{align-items:flex-start;flex-direction:column}
   .public-plans{grid-template-columns:1fr}
 }
@@ -419,7 +466,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .badge{padding:5px 8px}
   .client-table{min-width:920px}
   .expired-client-table{min-width:1020px}
-  .server-table{min-width:820px}
+  .server-table{min-width:940px}
   .orders-table{min-width:700px}
   .detail-row td{padding:0 8px 10px}
   .detail-panel{padding:12px}
@@ -432,6 +479,10 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .selection-count{font-size:13px}
   .selection-bar-actions{gap:6px}
   .selection-bar-actions button{flex-basis:100%;padding:10px 12px}
+  .selection-drop summary{padding:11px 12px}
+  .selection-drop-body{padding:0 12px 12px}
+  .selection-drop-actions{gap:6px}
+  .selection-drop-actions button{flex-basis:100%;padding:10px 12px}
   .public-hero-copy p{font-size:14px}
 }
 @media(max-width:380px){
@@ -444,7 +495,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .server-summary{grid-template-columns:1fr}
   .client-table{min-width:880px}
   .expired-client-table{min-width:980px}
-  .server-table{min-width:760px}
+  .server-table{min-width:860px}
   .orders-table{min-width:640px}
   .selection-bar{gap:10px}
 }
