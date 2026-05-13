@@ -29,6 +29,12 @@ const shiftDateKey = (key, days) => {
 const dict = {
   ru: {
     appName:'AmneziaWG Admin',
+    purchase:'Покупка',
+    purchaseSub:'Оформите доступ и создайте заказ для подключения.',
+    purchaseLead:'Выберите срок и отправьте заявку. Заказ появится в админке.',
+    purchaseOrderSub:'Форма покупки привязана к созданию заказа.',
+    purchaseAction:'Оформить заказ',
+    adminPanel:'Админ-панель',
     today:'Сегодня', admin:'Админ', oneDay:'1 день', threeDays:'3 дня', sevenDays:'7 дней', fifteenDays:'15 дней', oneMonth:'1 месяц', threeMonths:'3 месяца', sixMonths:'6 месяцев', oneYear:'1 год',
     online:'Онлайн', offline:'Оффлайн', recent:'Недавно', renewalPending:'Ожидает продления', checking:'Проверка сессии', signInTitle:'Вход в панель управления', login:'Логин', password:'Пароль', signIn:'Войти',
     noServer:'Сервер не выбран', noEndpoint:'endpoint не задан', refresh:'Обновить', refreshing:'Обновление', logout:'Выйти', home:'Главная', clients:'Клиенты', expired:'Просроченные', orders:'Заказы', servers:'Серверы', localServer:'Локальный сервер', allServers:'Все серверы', editName:'Редактировать имя', save:'Сохранить', cancel:'Отмена',
@@ -49,6 +55,12 @@ const dict = {
   },
   us: {
     appName:'AmneziaWG Admin',
+    purchase:'Purchase',
+    purchaseSub:'Choose access and create an order for the connection.',
+    purchaseLead:'Pick a term and send the request. The order will appear in the admin panel.',
+    purchaseOrderSub:'The purchase form is tied to order creation.',
+    purchaseAction:'Place order',
+    adminPanel:'Admin panel',
     today:'Today', admin:'Admin', oneDay:'1 day', threeDays:'3 days', sevenDays:'7 days', fifteenDays:'15 days', oneMonth:'1 month', threeMonths:'3 months', sixMonths:'6 months', oneYear:'1 year',
     online:'Online', offline:'Offline', recent:'Recent', renewalPending:'Awaiting renewal', checking:'Checking session', signInTitle:'Admin panel sign in', login:'Login', password:'Password', signIn:'Sign in',
     noServer:'No server selected', noEndpoint:'endpoint not set', refresh:'Refresh', refreshing:'Refreshing', logout:'Log out', home:'Home', clients:'Clients', expired:'Expired', orders:'Orders', servers:'Servers', localServer:'Local server', allServers:'All servers', editName:'Edit name', save:'Save', cancel:'Cancel',
@@ -158,6 +170,14 @@ function chartDays(points) {
 }
 
 function App(){
+  const [pathname,setPathname]=useState(()=>window.location.pathname || '/');
+  const isAdminRoute = pathname.startsWith('/admin');
+  const navigate=(to)=>{
+    if ((window.location.pathname || '/') === to) return;
+    window.history.pushState({}, '', to);
+    setPathname(to);
+    window.scrollTo(0, 0);
+  };
   const [view,setView]=useState('home');
   const [lang,setLang]=useState(()=>{
     const stored = localStorage.getItem('lang') || 'ru';
@@ -210,6 +230,16 @@ function App(){
   const [clientSortDir,setClientSortDir]=useState('asc');
   const selectionDragRef = useRef({active:false, desired:false, suppressClick:false, lastKey:''});
   const isAggregateServer = activeServerId === 'all';
+
+  useEffect(()=>{
+    const onPopState = ()=>setPathname(window.location.pathname || '/');
+    window.addEventListener('popstate', onPopState);
+    return ()=>window.removeEventListener('popstate', onPopState);
+  },[]);
+
+  useEffect(()=>{
+    document.title = isAdminRoute ? t('appName') : `${t('appName')} · ${t('purchase')}`;
+  },[isAdminRoute, lang]);
 
   const handleError=(e)=>{
     const message = e.message === 'Unauthorized' ? t('wrongAuth') : e.message;
@@ -447,7 +477,13 @@ function App(){
   const updateOrder=(id,status)=>saveOrders(orders.map(o=>o.id===id?{...o,status}:o));
   const deleteOrder=(id)=>saveOrders(orders.filter(o=>o.id!==id));
 
-  useEffect(()=>{ load().catch(()=>setIsLoggedIn(false)).finally(()=>setCheckingSession(false)); },[]);
+  useEffect(()=>{
+    if (!isAdminRoute) {
+      setCheckingSession(false);
+      return;
+    }
+    load().catch(()=>setIsLoggedIn(false)).finally(()=>setCheckingSession(false));
+  },[isAdminRoute]);
 
   const nav = [
     ['home',t('home'),Home],
@@ -488,7 +524,7 @@ function App(){
   }), {});
 
   useEffect(()=>{
-    if (!isLoggedIn || !servers.length) return;
+    if (!isAdminRoute || !isLoggedIn || !servers.length) return;
     if (activeServerId === 'all') return;
     if (!servers.some(server=>server.id===activeServerId)) {
       const next = servers[0].id;
@@ -497,10 +533,10 @@ function App(){
       localStorage.setItem('activeServerId', next);
       loadClients(next).catch(handleError);
     }
-  },[isLoggedIn, servers, activeServerId]);
+  },[isAdminRoute, isLoggedIn, servers, activeServerId]);
 
   useEffect(()=>{
-    if(!isLoggedIn) return;
+    if(!isAdminRoute || !isLoggedIn) return;
     setActivityHistory(current=>{
       const key = dateKey();
       const existing = current.find(point=>point.date===key);
@@ -511,18 +547,18 @@ function App(){
       localStorage.setItem('dailyActivityHistory',JSON.stringify(limited));
       return limited;
     });
-  },[isLoggedIn, activeClientCount, refreshSeq]);
+  },[isAdminRoute, isLoggedIn, activeClientCount, refreshSeq]);
 
   useEffect(()=>{
-    if(!isLoggedIn) return;
+    if(!isAdminRoute || !isLoggedIn) return;
     const timer = setInterval(()=>load().catch(handleError), 5000);
     return ()=>clearInterval(timer);
-  },[isLoggedIn, activeServerId]);
+  },[isAdminRoute, isLoggedIn, activeServerId]);
 
   useEffect(()=>{
-    if(!isLoggedIn || view !== 'server') return;
+    if(!isAdminRoute || !isLoggedIn || view !== 'server') return;
     loadAllServerStats().catch(()=>{});
-  },[isLoggedIn, view, servers.length]);
+  },[isAdminRoute, isLoggedIn, view, servers.length]);
 
   useEffect(()=>{
     const stopSelectionDrag = () => {
@@ -578,6 +614,7 @@ function App(){
     });
   };
   const beginClientSelectionDrag = (client, event) => {
+    if (!selectedClientKeys.size) return;
     if (event.button !== 0) return;
     event.preventDefault();
     const key = clientRowKey(client);
@@ -736,6 +773,67 @@ function App(){
     </td></tr>;
   };
 
+  if (!isAdminRoute) return <main className="public-page">
+    <section className="public-hero">
+      <div className="public-hero-copy">
+        <h1>{t('appName')}</h1>
+        <p>{t('purchaseSub')}</p>
+      </div>
+      <button className="secondary public-admin-link" onClick={()=>navigate('/admin')}>{t('adminPanel')}</button>
+    </section>
+
+    <section className="public-layout">
+      <div className="card public-plan-card">
+        <div className="panel-head">
+          <div>
+            <h2>{t('purchase')}</h2>
+            <p>{t('purchaseLead')}</p>
+          </div>
+        </div>
+        <div className="public-plans">
+          {clientTerms.filter(([value])=>value !== 'admin').map(([value,label])=>(
+            <button key={value} type="button" className={orderPlan===dict[uiLang][label] ? 'secondary active' : 'secondary'} onClick={()=>setOrderPlan(dict[uiLang][label])}>
+              <strong>{t(label)}</strong>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="card public-order-card">
+        <div className="panel-head">
+          <div>
+            <h2>{t('newOrder')}</h2>
+            <p>{t('purchaseOrderSub')}</p>
+          </div>
+        </div>
+        <div className="client-form-grid">
+          <label>{t('clientOrOrder')}<input value={orderName} onChange={e=>setOrderName(e.target.value)} placeholder={t('orderNamePlaceholder')} /></label>
+          <label>{t('contact')}<input value={orderContact} onChange={e=>setOrderContact(e.target.value)} placeholder={t('contactPlaceholder')} /></label>
+          <label>{t('plan')}<select value={orderPlan} onChange={e=>setOrderPlan(e.target.value)}>
+            {clientTerms.filter(([value])=>value !== 'admin').map(([value,label])=><option key={value} value={t(label)}>{t(label)}</option>)}
+          </select></label>
+        </div>
+        <button onClick={addOrder} disabled={!orderName.trim()}><Plus size={16}/>{t('purchaseAction')}</button>
+      </div>
+    </section>
+
+    {orders.length > 0 && <section className="card">
+      <div className="panel-head">
+        <div>
+          <h2>{t('recentOrders')}</h2>
+          <p>{t('allOrders')}: {orders.length}</p>
+        </div>
+      </div>
+      <table className="orders-table"><thead><tr><th>{t('clients')}</th><th>{t('contact')}</th><th>{t('plan')}</th><th>{t('status')}</th></tr></thead><tbody>
+        {orders.slice(0,5).map(o=><tr key={o.id}>
+          <td><strong>{o.name}</strong><small>{t('created')}: {o.created}</small></td>
+          <td>{o.contact||'—'}</td>
+          <td><span className="badge admin">{o.plan}</span></td>
+          <td><span className={`badge ${orderStatusClass(o.status)}`}>{t(normalizeOrderStatus(o.status))}</span></td>
+        </tr>)}
+      </tbody></table>
+    </section>}
+  </main>;
+
   if(checkingSession) return <main className="auth-page"><section className="card login-card"><h1>{t('appName')}</h1><p>{t('checking')}</p></section></main>;
 
   if(!isLoggedIn) return <main className="auth-page">
@@ -756,6 +854,7 @@ function App(){
     <header className="topbar">
       <div><h1>{t('appName')}</h1><p>{activeServer?.name || t('noServer')} · {activeServer?.kind === 'local' ? t('localServer') : activeServer?.kind === 'aggregate' ? t('allServers') : (activeServer?.baseUrl || t('noEndpoint'))}</p></div>
       <div className="actions">
+        <button className="secondary" onClick={()=>navigate('/')}><Home size={16}/>{t('purchase')}</button>
         <div className="language-switch"><button className={lang==='ru'?'active secondary':'secondary'} onClick={()=>setLanguage('ru')}>RU</button><button className={lang==='us'?'active secondary':'secondary'} onClick={()=>setLanguage('us')}>US</button></div>
         <button disabled={isRefreshing} onClick={()=>load({manual:true}).catch(handleError)}><RefreshCw size={16}/>{isRefreshing?t('refreshing'):t('refresh')}</button>
         <button className="secondary" onClick={logout}><LogOut size={16}/>{t('logout')}</button>
