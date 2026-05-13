@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Activity, Check, CheckCircle2, Clock3, CreditCard, Download, Home, LogOut, Pencil, Plus, RefreshCw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
+import {Activity, Check, CheckCircle2, Clipboard, Clock3, CreditCard, Download, Home, LogOut, Pencil, Plus, RefreshCw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
 import './style.css';
 
 const api = async (path, options={}) => {
@@ -494,10 +494,7 @@ function App(){
         <button className="secondary icon-button" title={t('cancel')} onClick={cancelEditClient}><X size={16}/></button>
       </div>;
     }
-    return <div className="client-name-cell">
-      <span>{client.name||'—'}</span>
-      <button className="secondary icon-button" title={t('editName')} onClick={()=>beginEditClient(client)}><Pencil size={15}/></button>
-    </div>;
+    return <span className="client-name-text">{client.name||'—'}</span>;
   };
 
   if(checkingSession) return <main className="auth-page"><section className="card login-card"><h1>AmneziaWG Admin</h1><p>{t('checking')}</p></section></main>;
@@ -604,7 +601,7 @@ function App(){
 
       <section className="card">
         <div className="panel-head"><div><h2>{t('activeClients')}</h2><p>{t('activeClientsSub')}</p></div><span className="badge ok">{activeClientsList.length}</span></div>
-        <table><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+        <table className="client-table active-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
           {activeClientsList.map(c=>{ const status = clientStatus(c); return <tr key={clientRowKey(c)}>
             <td>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
@@ -613,9 +610,10 @@ function App(){
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">
-              <button className="secondary" onClick={()=>copyClientConfig(c.PublicKey, c.serverId).catch(handleError)}>{t('key')}</button>
-              <button className="secondary" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client', c.serverId).catch(handleError)}><Download size={16}/></button>
-              <button className="danger" onClick={()=>remove(c.PublicKey, c.serverId).catch(handleError)}><Trash2 size={16}/></button>
+              <button className="secondary icon-button" title={t('key')} onClick={()=>copyClientConfig(c.PublicKey, c.serverId).catch(handleError)}><Clipboard size={16}/></button>
+              <button className="secondary icon-button" title={t('editName')} onClick={()=>beginEditClient(c)}><Pencil size={16}/></button>
+              <button className="secondary icon-button" title="Download" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client', c.serverId).catch(handleError)}><Download size={16}/></button>
+              <button className="danger icon-button" title={t('deleteClient')} onClick={()=>remove(c.PublicKey, c.serverId).catch(handleError)}><Trash2 size={16}/></button>
             </td>
           </tr> })}
         </tbody></table>
@@ -623,18 +621,20 @@ function App(){
 
       {pendingRenewalClients.length > 0 && <section className="card">
         <div className="panel-head"><div><h2>{t('expiredClients')}</h2><p>{t('expiredClientsSub')}</p></div><span className="badge expired">{pendingRenewalClients.length}</span></div>
-        <table><thead><tr><th>{t('name')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+        <table className="client-table expired-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
           {pendingRenewalClients.map(c=><tr key={clientRowKey(c)}>
             <td>{renderClientName(c)}</td>
+            <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
             <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>
             <td>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">
-              <button className="secondary" onClick={()=>copyClientConfig(c.PublicKey, c.serverId).catch(handleError)}>{t('key')}</button>
-              <button className="secondary" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client', c.serverId).catch(handleError)}><Download size={16}/></button>
-              <button className="danger" onClick={()=>remove(c.PublicKey, c.serverId).catch(handleError)}><Trash2 size={16}/></button>
+              <button className="secondary icon-button" title={t('key')} onClick={()=>copyClientConfig(c.PublicKey, c.serverId).catch(handleError)}><Clipboard size={16}/></button>
+              <button className="secondary icon-button" title={t('editName')} onClick={()=>beginEditClient(c)}><Pencil size={16}/></button>
+              <button className="secondary icon-button" title="Download" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client', c.serverId).catch(handleError)}><Download size={16}/></button>
+              <button className="danger icon-button" title={t('deleteClient')} onClick={()=>remove(c.PublicKey, c.serverId).catch(handleError)}><Trash2 size={16}/></button>
             </td>
           </tr>)}
         </tbody></table>
@@ -647,7 +647,7 @@ function App(){
         <span className="badge expired">{pendingRenewalClients.length}</span>
       </section>
       <section className="card">
-        <table><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+        <table className="client-table expired-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
           {pendingRenewalClients.map(c=><tr key={clientRowKey(c)}>
             <td>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
@@ -657,9 +657,10 @@ function App(){
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">
-              <button className="secondary" onClick={()=>copyClientConfig(c.PublicKey, c.serverId).catch(handleError)}>{t('key')}</button>
-              <button className="secondary" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client', c.serverId).catch(handleError)}><Download size={16}/></button>
-              <button className="danger" onClick={()=>remove(c.PublicKey, c.serverId).catch(handleError)}><Trash2 size={16}/></button>
+              <button className="secondary icon-button" title={t('key')} onClick={()=>copyClientConfig(c.PublicKey, c.serverId).catch(handleError)}><Clipboard size={16}/></button>
+              <button className="secondary icon-button" title={t('editName')} onClick={()=>beginEditClient(c)}><Pencil size={16}/></button>
+              <button className="secondary icon-button" title="Download" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client', c.serverId).catch(handleError)}><Download size={16}/></button>
+              <button className="danger icon-button" title={t('deleteClient')} onClick={()=>remove(c.PublicKey, c.serverId).catch(handleError)}><Trash2 size={16}/></button>
             </td>
           </tr>)}
         </tbody></table>

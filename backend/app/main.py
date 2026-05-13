@@ -565,6 +565,21 @@ def public_key_from_client_config(config_text: str) -> str:
     return awg(["pubkey"], input_text=private_key)
 
 
+def client_name_from_config(config_text: str) -> str:
+    patterns = [
+        r"(?im)^\s*#\s*Name:\s*(.+?)\s*$",
+        r"(?im)^\s*#\s*Client:\s*(.+?)\s*$",
+        r"(?im)^\s*Name\s*=\s*(.+?)\s*$",
+        r"(?im)^\s*ClientName\s*=\s*(.+?)\s*$",
+        r"(?im)^\s*Description\s*=\s*(.+?)\s*$",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, config_text)
+        if match:
+            return match.group(1).strip().strip('"')
+    return ""
+
+
 def load_client_export(public_key: str) -> str | None:
     path = client_export_path(public_key)
     if os.path.exists(path):
@@ -808,7 +823,7 @@ def import_client(
     expired = load_expired_clients()
     expired.pop(public_key, None)
     save_expired_clients(expired)
-    name = body.name.strip() or public_key
+    name = body.name.strip() or client_name_from_config(config_text) or public_key
     store_client_export(public_key, name, config_text)
     return {
         "name": name,

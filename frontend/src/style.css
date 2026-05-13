@@ -83,10 +83,26 @@ main{max-width:1180px;margin:0 auto;padding:28px}
 .server-form-grid,.client-form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:16px}
 .server-form-grid label,.client-form-grid label{margin:0}
 .server-table .selected-row{background:#1b2641}
-.table-actions{display:flex;gap:8px;justify-content:flex-end}
-.client-name-cell,.inline-edit{display:flex;align-items:center;gap:8px;min-width:180px}
-.client-name-cell span{min-width:0;word-break:break-word}
-.inline-edit input{min-width:140px;padding:9px 10px}
+.table-actions{display:flex;gap:6px;justify-content:flex-end;align-items:center;white-space:nowrap}
+.client-table{table-layout:fixed;min-width:980px}
+.active-client-table th:nth-child(1),.active-client-table td:nth-child(1){width:16%}
+.active-client-table th:nth-child(2),.active-client-table td:nth-child(2){width:13%}
+.active-client-table th:nth-child(3),.active-client-table td:nth-child(3){width:11%}
+.active-client-table th:nth-child(4),.active-client-table td:nth-child(4){width:11%}
+.active-client-table th:nth-child(5),.active-client-table td:nth-child(5){width:24%}
+.active-client-table th:nth-child(6),.active-client-table td:nth-child(6){width:13%}
+.expired-client-table th:nth-child(1),.expired-client-table td:nth-child(1){width:14%}
+.expired-client-table th:nth-child(2),.expired-client-table td:nth-child(2){width:12%}
+.expired-client-table th:nth-child(3),.expired-client-table td:nth-child(3){width:11%}
+.expired-client-table th:nth-child(4),.expired-client-table td:nth-child(4){width:10%}
+.expired-client-table th:nth-child(5),.expired-client-table td:nth-child(5){width:11%}
+.expired-client-table th:nth-child(6),.expired-client-table td:nth-child(6){width:22%}
+.expired-client-table th:nth-child(7),.expired-client-table td:nth-child(7){width:10%}
+.client-table th:last-child,.client-table td:last-child{width:130px}
+.client-table td{vertical-align:middle}
+.client-name-text{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;word-break:break-word}
+.inline-edit{display:flex;align-items:center;gap:6px;min-width:190px}
+.inline-edit input{min-width:130px;padding:9px 10px}
 .icon-button{min-height:34px;width:34px;padding:0}
 .badge{display:inline-flex;align-items:center;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800;letter-spacing:0}
 .badge.ok{background:#123b28;color:#bbf7d0}
@@ -162,8 +178,9 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .grid,.dashboard-grid,.order-stats,.server-form-grid,.client-form-grid{grid-template-columns:1fr}
   .token-row button,.row button,.order-form button,.server-form button,.actions button,.section-head button,.panel-head button,.add-panel button{margin-top:12px;width:100%}
   .menu button{flex:1;min-width:130px}
-  .table-actions{display:block}
-  .table-actions button{width:100%;margin-top:8px}
+  .client-table{min-width:920px}
+  .table-actions{display:grid;grid-template-columns:repeat(4,34px);justify-content:start}
+  .table-actions button{margin-top:0}
   .orders-table select{max-width:none}
   table{display:block;overflow-x:auto}
   td,th{font-size:13px;padding:10px 8px}
