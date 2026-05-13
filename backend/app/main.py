@@ -1,6 +1,11 @@
 from fastapi import Cookie, FastAPI, HTTPException, Header, Response
+from fastapi import Query
 from pydantic import BaseModel
-import base64, io, ipaddress, os, re, secrets, shutil, subprocess, time
+import base64, configparser, io, ipaddress, json, os, re, secrets, shutil, struct, subprocess, time, zlib
+from datetime import date, timedelta
+import urllib.request
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 import qrcode
 from .config import *
 
@@ -8,10 +13,25 @@ app = FastAPI(title="AmneziaWG Admin")
 
 class ClientCreate(BaseModel):
     name: str
+    term: str = "1m"
+
+class ClientImport(BaseModel):
+    name: str = ""
+    config: str
 
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+class ServerCreate(BaseModel):
+    name: str
+    baseUrl: str
+    token: str = ""
+
+class ServerUpdate(BaseModel):
+    name: str | None = None
+    baseUrl: str | None = None
+    token: str | None = None
 
 def auth(authorization: str | None, awg_panel_session: str | None):
     bearer_ok = authorization == f"Bearer {ADMIN_TOKEN}"
@@ -130,12 +150,206 @@ def parse_peers(text: str) -> list[dict]:
         if cm:
             name = cm.group(1).strip()
         data = {"name": name, "raw": chunk.strip()}
+        expires = re.search(r"#\s*Expires:\s*(.+)", chunk)
+        if expires:
+            data["expiresAt"] = expires.group(1).strip()
         for line in chunk.splitlines():
             if "=" in line and not line.strip().startswith("#"):
                 k, v = line.split("=", 1)
                 data[k.strip()] = v.strip()
         peers.append(data)
     return peers
+
+
+def expired_clients_path() -> str:
+    os.makedirs(CLIENTS_DIR, exist_ok=True)
+    return f"{CLIENTS_DIR}/expired-clients.json"
+
+
+def load_expired_clients() -> dict:
+    path = expired_clients_path()
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_expired_clients(clients: dict):
+    with open(expired_clients_path(), "w", encoding="utf-8") as f:
+        json.dump(clients, f, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def servers_path() -> str:
+    os.makedirs(os.path.dirname(SERVERS_PATH), exist_ok=True)
+    return SERVERS_PATH
+
+
+def load_servers() -> list[dict]:
+    path = servers_path()
+    if not os.path.exists(path):
+        return []
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if isinstance(data, dict):
+        data = data.get("servers", [])
+    if not isinstance(data, list):
+        return []
+    return [server for server in data if isinstance(server, dict)]
+
+
+def save_servers(servers: list[dict]):
+    with open(servers_path(), "w", encoding="utf-8") as f:
+        json.dump(servers, f, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def normalize_panel_url(value: str) -> str:
+    url = value.strip().rstrip("/")
+    if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
+        url = f"http://{url}"
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        raise HTTPException(400, "Invalid panel URL")
+    return url
+
+
+def server_identity(server: dict) -> dict:
+    return {
+        "id": server.get("id", ""),
+        "name": server.get("name", ""),
+        "baseUrl": server.get("baseUrl", ""),
+        "token": server.get("token", ""),
+    }
+
+
+def local_server_identity() -> dict:
+    return {
+        "id": LOCAL_SERVER_ID,
+        "name": LOCAL_SERVER_NAME,
+        "baseUrl": "local",
+        "token": "",
+        "kind": "local",
+        "status": "online",
+    }
+
+
+def probe_panel(server: dict) -> str:
+    try:
+        req = urllib.request.Request(f"{server['baseUrl'].rstrip('/')}/api/health", method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            if resp.status == 200:
+                return "online"
+    except Exception:
+        return "offline"
+    return "offline"
+
+
+def list_servers(include_local: bool = True) -> list[dict]:
+    result = []
+    if include_local:
+        result.append(local_server_identity())
+    for server in load_servers():
+        item = server_identity(server)
+        item["status"] = probe_panel(server)
+        item["kind"] = "remote"
+        result.append(item)
+    return result
+
+
+def get_server(server_id: str | None) -> dict | None:
+    if not server_id or server_id == LOCAL_SERVER_ID:
+        return None
+    for server in load_servers():
+        if server.get("id") == server_id:
+            return server
+    raise HTTPException(status_code=404, detail="Server not found")
+
+
+def panel_request(server: dict, method: str, path: str, body: bytes | None = None, content_type: str = "application/json") -> tuple[int, bytes, str]:
+    headers = {}
+    token = server.get("token", "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if body is not None:
+        headers["Content-Type"] = content_type
+    url = f"{server['baseUrl'].rstrip('/')}/api{path}"
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status, resp.read(), resp.headers.get_content_type()
+    except HTTPError as e:
+        return e.code, e.read(), e.headers.get_content_type() if e.headers else "text/plain"
+    except URLError as e:
+        raise HTTPException(status_code=502, detail=f"Panel unreachable: {e.reason}")
+
+
+def panel_json(server: dict, method: str, path: str, payload: dict | None = None):
+    body = None if payload is None else json.dumps(payload).encode("utf-8")
+    status, raw, content_type = panel_request(server, method, path, body=body)
+    text = raw.decode("utf-8", errors="replace") if raw else ""
+    if status >= 400:
+        detail = text.strip() or "Remote panel error"
+        raise HTTPException(status_code=status, detail=detail)
+    if content_type == "application/json":
+        return json.loads(text or "{}")
+    return text
+
+
+def panel_bytes(server: dict, method: str, path: str, payload: dict | None = None) -> bytes:
+    body = None if payload is None else json.dumps(payload).encode("utf-8")
+    status, raw, _ = panel_request(server, method, path, body=body)
+    if status >= 400:
+        detail = raw.decode("utf-8", errors="replace").strip() or "Remote panel error"
+        raise HTTPException(status_code=status, detail=detail)
+    return raw
+
+
+def expired_clients_list() -> list[dict]:
+    clients = load_expired_clients()
+    return sorted(
+        clients.values(),
+        key=lambda client: (client.get("expiresAt", ""), client.get("name", "")),
+    )
+
+
+def is_expired_date(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        return date.today() > date.fromisoformat(value)
+    except ValueError:
+        return False
+
+
+def peer_from_block(block: str) -> dict:
+    parsed = parse_peers(block)
+    return parsed[0] if parsed else {}
+
+
+def enforce_expired_clients() -> list[dict]:
+    text = read_cfg()
+    chunks = re.split(r"\n(?=\[Peer\])", text)
+    kept = []
+    expired = load_expired_clients()
+    changed = False
+    for chunk in chunks:
+        peer = peer_from_block(chunk) if chunk.strip().startswith("[Peer]") else {}
+        public_key = peer.get("PublicKey", "").strip()
+        if public_key and is_expired_date(peer.get("expiresAt")):
+            previous = expired.get(public_key, {})
+            peer["raw"] = chunk.strip()
+            peer["blocked"] = True
+            peer["status"] = "not_renewed"
+            peer["reason"] = "subscription_expired"
+            peer["blockedAt"] = previous.get("blockedAt") or date.today().isoformat()
+            expired[public_key] = peer
+            changed = True
+            continue
+        kept.append(chunk)
+    if changed:
+        write_cfg("\n".join(kept))
+        save_expired_clients(expired)
+        reload_service()
+    return expired_clients_list()
 
 
 def next_ip(interface_address: str, peers: list[dict]) -> str:
@@ -154,15 +368,43 @@ def next_ip(interface_address: str, peers: list[dict]) -> str:
     raise HTTPException(500, "No free client IP")
 
 
+def add_months(value: date, months: int) -> date:
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    month_days = [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    return value.replace(year=year, month=month, day=min(value.day, month_days[month - 1]))
+
+
+def expiration_date(term: str) -> str:
+    if term == "admin":
+        return ""
+    today = date.today()
+    terms = {
+        "1d": today + timedelta(days=1),
+        "3d": today + timedelta(days=3),
+        "7d": today + timedelta(days=7),
+        "15d": today + timedelta(days=15),
+        "1m": add_months(today, 1),
+        "3m": add_months(today, 3),
+        "6m": add_months(today, 6),
+        "1y": add_months(today, 12),
+    }
+    if term not in terms:
+        raise HTTPException(400, "Invalid client term")
+    return terms[term].isoformat()
+
+
 def client_config(private_key: str, address: str, server_public: str, peer: dict, interface: dict) -> str:
     awg_extra = []
-    for key in ["Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4", "H1", "H2", "H3", "H4"]:
+    for key in ["Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4", "H1", "H2", "H3", "H4", "I1", "I2", "I3", "I4", "I5"]:
         if key in interface:
             awg_extra.append(f"{key} = {interface[key]}")
     extra = "\n".join(awg_extra)
     return f"""[Interface]
 PrivateKey = {private_key}
 Address = {address}/32
+MTU = {interface.get('MTU', '1280')}
 DNS = {CLIENT_DNS}
 {extra}
 
@@ -173,6 +415,176 @@ AllowedIPs = {CLIENT_ALLOWED_IPS}
 Endpoint = {SERVER_ENDPOINT}
 PersistentKeepalive = {CLIENT_PERSISTENT_KEEPALIVE}
 """.strip() + "\n"
+
+
+def client_config_for_amnezia(config_text: str) -> tuple[configparser.SectionProxy, configparser.SectionProxy, str, str]:
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.optionxform = str
+    parser.read_string(config_text)
+    if not parser.has_section("Interface") or not parser.has_section("Peer"):
+        raise HTTPException(400, "Config must contain [Interface] and [Peer] sections")
+    interface = parser["Interface"]
+    peer = parser["Peer"]
+    dns_value = interface.get("DNS", CLIENT_DNS)
+    dns_parts = [part.strip() for part in dns_value.split(",") if part.strip()]
+    dns1 = dns_parts[0] if dns_parts else CLIENT_DNS
+    dns2 = dns_parts[1] if len(dns_parts) > 1 else dns1
+    return interface, peer, dns1, dns2
+
+
+def strip_amnezia_r_tag(value: str) -> str:
+    return re.sub(r"^<r\s*\d+>", "", value.strip())
+
+
+def safe_name(value: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_.-]+", "_", value.strip())
+
+
+def client_export_path(public_key: str) -> str:
+    os.makedirs(CLIENTS_DIR, exist_ok=True)
+    return f"{CLIENTS_DIR}/{safe_name(public_key)}.conf"
+
+
+def store_client_export(public_key: str, name: str, config_text: str):
+    public_path = client_export_path(public_key)
+    with open(public_path, "w", encoding="utf-8") as f:
+        f.write(config_text)
+    named_path = f"{CLIENTS_DIR}/{safe_name(name)}.conf"
+    if named_path != public_path:
+        with open(named_path, "w", encoding="utf-8") as f:
+            f.write(config_text)
+
+
+def public_key_from_client_config(config_text: str) -> str:
+    interface, _, _, _ = client_config_for_amnezia(config_text)
+    private_key = interface.get("PrivateKey", "").strip()
+    if not private_key:
+        raise HTTPException(400, "Client config has no Interface.PrivateKey")
+    return awg(["pubkey"], input_text=private_key)
+
+
+def load_client_export(public_key: str) -> str | None:
+    path = client_export_path(public_key)
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    return None
+
+
+def render_qr_from_renderer(vpn_key: str) -> bytes:
+    payload = json.dumps({"text": vpn_key}).encode("utf-8")
+    req = urllib.request.Request(
+        QR_RENDERER_URL,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return resp.read()
+
+
+def build_amnezia_vpn_key(config_text: str) -> str:
+    interface, peer, dns1, dns2 = client_config_for_amnezia(config_text)
+    endpoint = peer.get("Endpoint", SERVER_ENDPOINT)
+    server_host, _, server_port = endpoint.partition(":")
+    client_priv_key = interface.get("PrivateKey", "")
+    server_pub_key = peer.get("PublicKey", "")
+    psk_key = peer.get("PresharedKey", "")
+    client_pub_key = awg(["pubkey"], input_text=client_priv_key)
+    client_ip = interface.get("Address", "")
+    subnet_address = str(ipaddress.ip_network(client_ip, strict=False).network_address)
+    persistent_keep_alive = peer.get("PersistentKeepalive", CLIENT_PERSISTENT_KEEPALIVE)
+    qr_config_text = "\n".join([
+        "[Interface]",
+        f"Address = {client_ip}",
+        "DNS = $PRIMARY_DNS, $SECONDARY_DNS",
+        f"PrivateKey = {client_priv_key}",
+        f"Jc = {interface.get('Jc', '')}",
+        f"Jmin = {interface.get('Jmin', '')}",
+        f"Jmax = {interface.get('Jmax', '')}",
+        f"S1 = {interface.get('S1', '')}",
+        f"S2 = {interface.get('S2', '')}",
+        f"S3 = {interface.get('S3', '')}",
+        f"S4 = {interface.get('S4', '')}",
+        f"H1 = {interface.get('H1', '')}",
+        f"H2 = {interface.get('H2', '')}",
+        f"H3 = {interface.get('H3', '')}",
+        f"H4 = {interface.get('H4', '')}",
+        "I1 = ",
+        "I2 = ",
+        "I3 = ",
+        "I4 = ",
+        "I5 = ",
+        "",
+        "[Peer]",
+        f"PublicKey = {server_pub_key}",
+        f"PresharedKey = {psk_key}",
+        f"AllowedIPs = {peer.get('AllowedIPs', '0.0.0.0/0, ::/0')}",
+        f"Endpoint = {endpoint}",
+        f"PersistentKeepalive = {persistent_keep_alive}",
+        "",
+    ])
+    last_config = {
+        "H1": interface.get("H1", ""),
+        "H2": interface.get("H2", ""),
+        "H3": interface.get("H3", ""),
+        "H4": interface.get("H4", ""),
+        "I1": strip_amnezia_r_tag(interface.get("I1", "")),
+        "I2": interface.get("I2", ""),
+        "I3": interface.get("I3", ""),
+        "I4": interface.get("I4", ""),
+        "I5": interface.get("I5", ""),
+        "Jc": interface.get("Jc", ""),
+        "Jmax": interface.get("Jmax", ""),
+        "Jmin": interface.get("Jmin", ""),
+        "S1": interface.get("S1", ""),
+        "S2": interface.get("S2", ""),
+        "allowed_ips": [ip.strip() for ip in peer.get("AllowedIPs", "").split(",") if ip.strip()],
+        "clientId": client_pub_key,
+        "client_ip": client_ip,
+        "client_priv_key": client_priv_key,
+        "client_pub_key": client_pub_key,
+        "config": qr_config_text,
+        "hostName": server_host,
+        "mtu": interface.get("MTU", "1280"),
+        "persistent_keep_alive": str(persistent_keep_alive),
+        "port": int(server_port or "51820"),
+        "psk_key": psk_key,
+        "server_pub_key": server_pub_key,
+    }
+    amnezia_payload = {
+        "containers": [
+            {
+                "container": "amnezia-awg",
+                "awg": {
+                    "H1": interface.get("H1", ""),
+                    "H2": interface.get("H2", ""),
+                    "H3": interface.get("H3", ""),
+                    "H4": interface.get("H4", ""),
+                    "Jc": interface.get("Jc", ""),
+                    "Jmax": interface.get("Jmax", ""),
+                    "Jmin": interface.get("Jmin", ""),
+                    "S1": interface.get("S1", ""),
+                    "S2": interface.get("S2", ""),
+                    "last_config": json.dumps(last_config, ensure_ascii=False, indent=4),
+                    "port": int(server_port or "51820"),
+                    "subnet_address": subnet_address,
+                    "transport_proto": "udp",
+                },
+            }
+        ],
+        "defaultContainer": "amnezia-awg",
+        "description": "AmneziaWG client",
+        "dns1": dns1,
+        "dns2": dns2,
+        "hostName": server_host,
+        "nameOverriddenByUser": True,
+    }
+    raw = json.dumps(amnezia_payload, ensure_ascii=False, indent=4).encode("utf-8")
+    compressed = zlib.compress(raw, 9)
+    qcompressed = struct.pack(">I", len(raw)) + compressed
+    encoded = base64.urlsafe_b64encode(qcompressed).decode("ascii").rstrip("=")
+    return f"vpn://{encoded}"
 
 
 def reload_service():
@@ -207,20 +619,119 @@ def logout(response: Response):
     response.delete_cookie("awg_panel_session")
     return {"ok": True}
 
-@app.get("/api/clients")
-def clients(authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+@app.get("/api/servers")
+def servers(authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
     auth(authorization, awg_panel_session)
+    return {"servers": list_servers()}
+
+
+@app.post("/api/servers")
+def create_server(body: ServerCreate, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+    auth(authorization, awg_panel_session)
+    name = body.name.strip()
+    base_url = normalize_panel_url(body.baseUrl)
+    token = body.token.strip()
+    if not name:
+        raise HTTPException(400, "Server name is required")
+    if not token:
+        raise HTTPException(400, "Server token is required")
+    server = {
+        "id": secrets.token_hex(8),
+        "name": name,
+        "baseUrl": base_url,
+        "token": token,
+    }
+    servers = load_servers()
+    servers.append(server)
+    save_servers(servers)
+    return {"server": {**server_identity(server), "kind": "remote", "status": probe_panel(server)}}
+
+
+@app.put("/api/servers/{server_id}")
+def update_server(server_id: str, body: ServerUpdate, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+    auth(authorization, awg_panel_session)
+    if server_id == LOCAL_SERVER_ID:
+        raise HTTPException(400, "Local server cannot be edited")
+    servers = load_servers()
+    for index, server in enumerate(servers):
+        if server.get("id") != server_id:
+            continue
+        updated = dict(server)
+        if body.name is not None:
+            updated["name"] = body.name.strip() or server.get("name", "")
+        if body.baseUrl is not None:
+            updated["baseUrl"] = normalize_panel_url(body.baseUrl)
+        if body.token is not None:
+            updated["token"] = body.token.strip()
+        if not updated.get("name"):
+            raise HTTPException(400, "Server name is required")
+        if not updated.get("baseUrl"):
+            raise HTTPException(400, "Server URL is required")
+        servers[index] = updated
+        save_servers(servers)
+        return {"server": {**server_identity(updated), "kind": "remote", "status": probe_panel(updated)}}
+    raise HTTPException(404, "Server not found")
+
+
+@app.delete("/api/servers/{server_id}")
+def delete_server(server_id: str, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+    auth(authorization, awg_panel_session)
+    if server_id == LOCAL_SERVER_ID:
+        raise HTTPException(400, "Local server cannot be deleted")
+    servers = load_servers()
+    next_servers = [server for server in servers if server.get("id") != server_id]
+    if len(next_servers) == len(servers):
+        raise HTTPException(404, "Server not found")
+    save_servers(next_servers)
+    return {"ok": True}
+
+
+@app.get("/api/clients")
+def clients(
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    server = get_server(server_id)
+    if server is not None:
+        return panel_json(server, "GET", "/clients")
+    expired_clients = enforce_expired_clients()
     peers = parse_peers(read_cfg())
+    for peer in peers:
+        peer["blocked"] = False
+        peer["status"] = "active"
     dump = ""
     try:
         dump = awg(["show", AWG_INTERFACE, "dump"])
     except Exception:
         pass
-    return {"clients": peers, "dump": dump}
+    return {"clients": peers + expired_clients, "expiredClientsPath": expired_clients_path(), "dump": dump}
+
+
+@app.get("/api/expired-clients")
+def expired_clients(
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    server = get_server(server_id)
+    if server is not None:
+        return panel_json(server, "GET", "/expired-clients")
+    return {"clients": enforce_expired_clients(), "path": expired_clients_path()}
 
 @app.post("/api/clients")
-def create_client(body: ClientCreate, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+def create_client(
+    body: ClientCreate,
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
     auth(authorization, awg_panel_session)
+    server = get_server(server_id)
+    if server is not None:
+        return panel_json(server, "POST", "/clients", payload=body.model_dump())
     name = body.name.strip()
     if not name:
         raise HTTPException(400, "Client name is required")
@@ -229,13 +740,18 @@ def create_client(body: ClientCreate, authorization: str | None = Header(None), 
     peers = parse_peers(text)
     private_key = awg(["genkey"])
     public_key = awg(["pubkey"], input_text=private_key)
+    expired = load_expired_clients()
+    expired.pop(public_key, None)
+    save_expired_clients(expired)
     psk = awg(["genpsk"])
     ip = next_ip(interface.get("Address", "10.8.1.1/24"), peers)
+    expires_at = expiration_date(body.term)
+    expires_line = f"# Expires: {expires_at}\n" if expires_at else ""
     peer_block = f"""
 
 [Peer]
 # Name: {name}
-PublicKey = {public_key}
+{expires_line}PublicKey = {public_key}
 PresharedKey = {psk}
 AllowedIPs = {ip}/32
 """
@@ -243,42 +759,161 @@ AllowedIPs = {ip}/32
     reload_service()
     server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
     cfg = client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
-    os.makedirs(CLIENTS_DIR, exist_ok=True)
-    path = f"{CLIENTS_DIR}/{re.sub(r'[^a-zA-Z0-9_.-]+','_',name)}.conf"
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(cfg)
-    return {"name": name, "publicKey": public_key, "address": f"{ip}/32", "config": cfg}
+    store_client_export(public_key, name, cfg)
+    return {
+        "name": name,
+        "publicKey": public_key,
+        "address": f"{ip}/32",
+        "expiresAt": expires_at,
+        "config": cfg,
+        "configUrl": f"/api/client-config?public_key={public_key}",
+        "qrcodeUrl": f"/api/client-qrcode?public_key={public_key}",
+    }
+
+
+@app.post("/api/client-import")
+def import_client(
+    body: ClientImport,
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    server = get_server(server_id)
+    if server is not None:
+        return panel_json(server, "POST", "/client-import", payload=body.model_dump())
+    config_text = body.config.strip()
+    if not config_text:
+        raise HTTPException(400, "Client config is required")
+    public_key = public_key_from_client_config(config_text)
+    expired = load_expired_clients()
+    expired.pop(public_key, None)
+    save_expired_clients(expired)
+    name = body.name.strip() or public_key
+    store_client_export(public_key, name, config_text)
+    return {
+        "name": name,
+        "publicKey": public_key,
+        "config": config_text.rstrip() + "\n",
+        "configUrl": f"/api/client-config?public_key={public_key}",
+        "qrcodeUrl": f"/api/client-qrcode?public_key={public_key}",
+    }
 
 @app.delete("/api/clients/{public_key}")
-def delete_client(public_key: str, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+def delete_client(
+    public_key: str,
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
     auth(authorization, awg_panel_session)
+    server = get_server(server_id)
+    if server is not None:
+        return panel_json(server, "DELETE", f"/clients/{public_key.strip()}")
+    expired = load_expired_clients()
+    expired_removed = expired.pop(public_key.strip(), None)
+    if expired_removed is not None:
+        save_expired_clients(expired)
     text = read_cfg()
+    target = public_key.strip()
     chunks = re.split(r"\n(?=\[Peer\])", text)
     kept = []
     found = False
+    removed_name = ""
     for ch in chunks:
-        if ch.strip().startswith("[Peer]") and f"PublicKey = {public_key}" in ch:
-            found = True
-            continue
+        if ch.strip().startswith("[Peer]"):
+            peer_data = {}
+            for line in ch.splitlines():
+                if "=" in line and not line.strip().startswith("#"):
+                    k, v = line.split("=", 1)
+                    peer_data[k.strip()] = v.strip()
+            if peer_data.get("PublicKey", "").strip() == target:
+                found = True
+                removed_name = re.search(r"#\s*Name:\s*(.+)", ch)
+                removed_name = removed_name.group(1).strip() if removed_name else ""
+                continue
         kept.append(ch)
-    if not found:
+    if not found and expired_removed is None:
         raise HTTPException(404, "Peer not found")
-    write_cfg("\n".join(kept))
-    reload_service()
+    if found:
+        write_cfg("\n".join(kept))
+    export_path = client_export_path(target)
+    if os.path.exists(export_path):
+        os.remove(export_path)
+    if removed_name:
+        named_path = f"{CLIENTS_DIR}/{safe_name(removed_name)}.conf"
+        if named_path != export_path and os.path.exists(named_path):
+            os.remove(named_path)
+    if found:
+        reload_service()
     return {"ok": True}
 
-@app.post("/api/qrcode")
-def qr(payload: dict, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+@app.get("/api/client-config")
+def client_config_export(
+    public_key: str,
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
     auth(authorization, awg_panel_session)
-    qr_code = qrcode.QRCode(
-        version=None,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=12,
-        border=6,
-    )
-    qr_code.add_data(payload.get("config", ""))
-    qr_code.make(fit=True)
-    img = qr_code.make_image(fill_color="black", back_color="white")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return Response(content=buf.getvalue(), media_type="image/png")
+    server = get_server(server_id)
+    if server is not None:
+        raw = panel_bytes(server, "GET", f"/client-config?public_key={public_key}")
+        return Response(content=raw, media_type="text/plain; charset=utf-8")
+    cfg = load_client_export(public_key)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail="Client config not found on server")
+    return Response(content=cfg, media_type="text/plain; charset=utf-8")
+
+
+@app.get("/api/client-qrcode")
+def client_qrcode(
+    public_key: str,
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    server = get_server(server_id)
+    if server is not None:
+        raw = panel_bytes(server, "GET", f"/client-qrcode?public_key={public_key}")
+        return Response(content=raw, media_type="image/png")
+    cfg = load_client_export(public_key)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail="Client config not found on server")
+    try:
+        return Response(content=render_qr_from_renderer(cfg), media_type="image/png")
+    except Exception:
+        qr_code = qrcode.QRCode(
+            version=None,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=14,
+            border=8,
+        )
+        qr_code.add_data(cfg)
+        qr_code.make(fit=True)
+        img = qr_code.make_image(fill_color="black", back_color="white")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
+
+
+@app.post("/api/qrcode")
+def legacy_qrcode(payload: dict, authorization: str | None = Header(None), awg_panel_session: str | None = Cookie(None)):
+    auth(authorization, awg_panel_session)
+    config_text = payload.get("config", "")
+    try:
+        return Response(content=render_qr_from_renderer(config_text), media_type="image/png")
+    except Exception:
+        qr_code = qrcode.QRCode(
+            version=None,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=14,
+            border=8,
+        )
+        qr_code.add_data(config_text)
+        qr_code.make(fit=True)
+        img = qr_code.make_image(fill_color="black", back_color="white")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")

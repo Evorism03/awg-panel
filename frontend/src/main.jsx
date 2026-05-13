@@ -1,12 +1,12 @@
 import React, {useEffect, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Activity, Download, Home, LogOut, Plus, RefreshCw, Server, ShoppingCart, Trash2, Users} from 'lucide-react';
+import {Activity, CheckCircle2, Clock3, CreditCard, Download, Home, LogOut, Plus, RefreshCw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX} from 'lucide-react';
 import './style.css';
 
 const api = async (path, options={}) => {
   const res = await fetch(path, { ...options, credentials:'same-origin', headers: { 'Content-Type':'application/json', ...(options.headers||{}) }});
   if (!res.ok) {
-    if (res.status === 401) throw new Error('Неверный логин или пароль.');
+    if (res.status === 401) throw new Error('Unauthorized');
     throw new Error(await res.text());
   }
   return res;
@@ -26,11 +26,76 @@ const shiftDateKey = (key, days) => {
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
 };
-const dateLabel = (key) => {
-  const today = dateKey();
-  if (key === today) return 'Сегодня';
-  return new Date(`${key}T00:00:00`).toLocaleDateString('ru-RU', {day:'2-digit', month:'2-digit'});
+const dict = {
+  ru: {
+    today:'Сегодня', admin:'Админ', oneDay:'1 день', threeDays:'3 дня', sevenDays:'7 дней', fifteenDays:'15 дней', oneMonth:'1 месяц', threeMonths:'3 месяца', sixMonths:'6 месяцев', oneYear:'1 год',
+    online:'Онлайн', offline:'Оффлайн', recent:'Недавно', renewalPending:'Ожидает продления', checking:'Проверка сессии', signInTitle:'Вход в панель управления', login:'Логин', password:'Пароль', signIn:'Войти',
+    noServer:'Сервер не выбран', noEndpoint:'endpoint не задан', refresh:'Обновить', refreshing:'Обновление', logout:'Выйти', home:'Главная', clients:'Клиенты', expired:'Просроченные', orders:'Заказы', servers:'Серверы', localServer:'Локальный сервер',
+    totalClients:'Всего клиентов', activeClients:'Активные клиенты', expiredClients:'Просроченные клиенты', serversActive:'Серверы / активные', activeUsers:'Активные пользователи', maxOnline:'Максимум онлайн-клиентов по дням', now:'Сейчас',
+    traffic:'Трафик', rx:'Прием данных', tx:'Отдача данных', peersDump:'Peers в dump', clientsSub:'Создание, выдача и скачивание конфигов для выбранного сервера',
+    importConf:'Импорт .conf', createClient:'Создать клиента', importTitle:'Импорт Amnezia-конфига', close:'Закрыть', clientName:'Имя клиента', readyConf:'Готовый .conf',
+    saveCopy:'Сохранить и скопировать config', server:'Сервер', term:'Срок', createIssue:'Создать и выдать config', issuedConf:'Выданный конфиг', name:'Имя', status:'Статус',
+    expires:'Окончание', publicKey:'Публичный ключ', allowedIps:'Разрешенные IP', key:'Ключ', activeClientsSub:'Клиенты с действующей подпиской и активным peer в конфиге.', expiredClientsSub:'Клиенты, которые не продлили подписку. Они заблокированы и хранятся отдельно.', blockedAt:'Заблокирован',
+    deleteClient:'Удалить клиента?', copied:'Скопировано', noCopyData:'Нет данных для копирования', serverUnavailable:'Выбранный сервер недоступен. Выбери активный сервер или отредактируй подключение.',
+    dataUpdated:'Данные обновлены', configCreatedCopied:'Конфиг создан и скопирован', configCreated:'Конфиг создан', configSavedCopied:'Конфиг сохранен и скопирован', configSaved:'Конфиг сохранен',
+    configUnavailable:'Конфиг недоступен', configCopied:'Конфиг скопирован', clientOrOrder:'Клиент или название заказа', contact:'Контакт: Telegram, телефон, email', plan:'Тариф',
+    add:'Добавить', new:'Новый', paid:'Оплачен', issued:'Выдан', closed:'Закрыт', ordersSub:'Заявки, оплаты и выдача доступов клиентам.', allOrders:'Все заказы', newOrder:'Новый заказ', recentOrders:'Последние заказы', noOrders:'Заказов пока нет', created:'Создан', serversSub:'Список подключений для управления несколькими панелями VPS',
+    addServer:'Добавить сервер', editServer:'Редактировать сервер', title:'Название', panelUrl:'URL панели', token:'Токен', saveServer:'Сохранить сервер', endpoint:'URL панели', set:'Задан',
+    notSet:'Не задан', active:'Активен', inactiveEdit:'Неактивен · редактировать', select:'Выбрать', edit:'Редактировать', activeServer:'Активный сервер', dumpTitle:'Активный сервер: awg dump',
+    noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.'
+  },
+  en: {
+    today:'Today', admin:'Admin', oneDay:'1 day', threeDays:'3 days', sevenDays:'7 days', fifteenDays:'15 days', oneMonth:'1 month', threeMonths:'3 months', sixMonths:'6 months', oneYear:'1 year',
+    online:'Online', offline:'Offline', recent:'Recent', renewalPending:'Awaiting renewal', checking:'Checking session', signInTitle:'Admin panel sign in', login:'Login', password:'Password', signIn:'Sign in',
+    noServer:'No server selected', noEndpoint:'endpoint not set', refresh:'Refresh', refreshing:'Refreshing', logout:'Log out', home:'Home', clients:'Clients', expired:'Expired', orders:'Orders', servers:'Servers', localServer:'Local server',
+    totalClients:'Total clients', activeClients:'Active clients', expiredClients:'Expired clients', serversActive:'Servers / active', activeUsers:'Active users', maxOnline:'Max online clients by day', now:'Now',
+    traffic:'Traffic', rx:'Received', tx:'Sent', peersDump:'Peers in dump', clientsSub:'Create, issue, and download configs for the selected server',
+    importConf:'Import .conf', createClient:'Create client', importTitle:'Import Amnezia config', close:'Close', clientName:'Client name', readyConf:'Ready .conf',
+    saveCopy:'Save and copy config', server:'Server', term:'Term', createIssue:'Create and issue config', issuedConf:'Issued config', name:'Name', status:'Status',
+    expires:'Expires', publicKey:'Public key', allowedIps:'Allowed IPs', key:'Key', activeClientsSub:'Clients with an active subscription and peer in the config.', expiredClientsSub:'Clients who did not renew. They are blocked and stored separately.', blockedAt:'Blocked',
+    deleteClient:'Delete client?', copied:'Copied', noCopyData:'No data to copy', serverUnavailable:'Selected server is unavailable. Select an active server or edit the connection.',
+    dataUpdated:'Data updated', configCreatedCopied:'Config created and copied', configCreated:'Config created', configSavedCopied:'Config saved and copied', configSaved:'Config saved',
+    configUnavailable:'Config unavailable', configCopied:'Config copied', clientOrOrder:'Client or order name', contact:'Contact: Telegram, phone, email', plan:'Plan',
+    add:'Add', new:'New', paid:'Paid', issued:'Issued', closed:'Closed', ordersSub:'Requests, payments, and issuing client access.', allOrders:'All orders', newOrder:'New order', recentOrders:'Recent orders', noOrders:'No orders yet', created:'Created', serversSub:'Connection list for managing multiple VPS panels',
+    addServer:'Add server', editServer:'Edit server', title:'Title', panelUrl:'Panel URL', token:'Token', saveServer:'Save server', endpoint:'Panel URL', set:'Set',
+    notSet:'Not set', active:'Active', inactiveEdit:'Inactive · edit', select:'Select', edit:'Edit', activeServer:'Active server', dumpTitle:'Active server: awg dump',
+    noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.'
+  }
 };
+
+const dateLabel = (key, lang='ru') => {
+  const today = dateKey();
+  if (key === today) return dict[lang].today;
+  return new Date(`${key}T00:00:00`).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {day:'2-digit', month:'2-digit'});
+};
+const formatDate = (key, lang='ru') => key ? new Date(`${key}T00:00:00`).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {day:'2-digit', month:'2-digit', year:'numeric'}) : '—';
+const isExpired = (key) => key ? key < dateKey() : false;
+const clientTerms = [
+  ['admin','admin'], ['1d','oneDay'], ['3d','threeDays'], ['7d','sevenDays'], ['15d','fifteenDays'], ['1m','oneMonth'], ['3m','threeMonths'], ['6m','sixMonths'], ['1y','oneYear'],
+];
+const orderStatuses = [
+  ['new', 'new', Clock3],
+  ['paid', 'paid', CreditCard],
+  ['issued', 'issued', UserCheck],
+  ['closed', 'closed', CheckCircle2],
+];
+const orderStatusAliases = {
+  'Новый': 'new',
+  'Оплачен': 'paid',
+  'Выдан': 'issued',
+  'Закрыт': 'closed',
+  New: 'new',
+  Paid: 'paid',
+  Issued: 'issued',
+  Closed: 'closed',
+};
+const normalizeOrderStatus = (status) => orderStatusAliases[status] || status || 'new';
+const orderStatusClass = (status) => ({
+  new: 'muted',
+  paid: 'warn',
+  issued: 'ok',
+  closed: 'admin',
+})[normalizeOrderStatus(status)] || 'muted';
 
 const smoothPath = (coords) => {
   if (coords.length < 2) return coords[0] ? `M ${coords[0].x} ${coords[0].y}` : '';
@@ -42,7 +107,7 @@ const smoothPath = (coords) => {
   }, '');
 };
 
-function ActivityChart({points}) {
+function ActivityChart({points, lang}) {
   const today = dateKey();
   const data = chartDays(points);
   const values = data.map(p=>p.value);
@@ -62,7 +127,7 @@ function ActivityChart({points}) {
     <path className="chart-line" d={linePath} />
     {coords.map((point,index)=><g key={data[index].date} className="chart-point">
       {data[index].date <= today && <circle className={data[index].date===today?'chart-dot today':'chart-dot'} cx={point.x} cy={point.y} r="4" />}
-      {data[index].date <= today && <title>{dateLabel(data[index].date)}: {data[index].value} онлайн</title>}
+      {data[index].date <= today && <title>{dateLabel(data[index].date, lang)}: {data[index].value} {dict[lang].online.toLowerCase()}</title>}
     </g>)}
   </svg>;
 }
@@ -75,62 +140,91 @@ function chartDays(points) {
 
 function App(){
   const [view,setView]=useState('home');
+  const [lang,setLang]=useState(()=>localStorage.getItem('lang')||'ru');
+  const t=(key)=>dict[lang]?.[key] || dict.ru[key] || key;
+  const setLanguage=(value)=>{ setLang(value); localStorage.setItem('lang', value); };
   const [username,setUsername]=useState('admin');
   const [password,setPassword]=useState('');
   const [isLoggedIn,setIsLoggedIn]=useState(false);
   const [checkingSession,setCheckingSession]=useState(true);
   const [isLoading,setIsLoading]=useState(false);
+  const [isRefreshing,setIsRefreshing]=useState(false);
   const [notice,setNotice]=useState('');
   const [refreshSeq,setRefreshSeq]=useState(0);
   const [clients,setClients]=useState([]);
   const [dump,setDump]=useState('');
   const [name,setName]=useState('');
+  const [clientTerm,setClientTerm]=useState('admin');
   const [showClientForm,setShowClientForm]=useState(false);
-  const [clientServerId,setClientServerId]=useState(()=>localStorage.getItem('activeServerId')||'main');
+  const [importName,setImportName]=useState('');
+  const [importConfig,setImportConfig]=useState('');
+  const [showImportForm,setShowImportForm]=useState(false);
+  const [clientServerId,setClientServerId]=useState(()=>localStorage.getItem('activeServerId')||'local');
   const [clientConfigs,setClientConfigs]=useState(()=>JSON.parse(localStorage.getItem('clientConfigs')||'{}'));
-  const [selectedQr,setSelectedQr]=useState('');
   const [selectedConfig,setSelectedConfig]=useState('');
   const [showServerForm,setShowServerForm]=useState(false);
   const [serverName,setServerName]=useState('');
-  const [serverIp,setServerIp]=useState('');
-  const [serverPort,setServerPort]=useState('');
+  const [serverBaseUrl,setServerBaseUrl]=useState('');
   const [serverToken,setServerToken]=useState('');
   const [editingServerId,setEditingServerId]=useState(null);
-  const [activeServerId,setActiveServerId]=useState(()=>localStorage.getItem('activeServerId')||'main');
-  const [servers,setServers]=useState(()=>JSON.parse(localStorage.getItem('servers')||'[{"id":"main","name":"Основной VPS","ip":"45.15.152.113","port":"47074","token":"","status":"active"}]'));
+  const [activeServerId,setActiveServerId]=useState(()=>localStorage.getItem('activeServerId')||'local');
+  const [servers,setServers]=useState([]);
   const [orderName,setOrderName]=useState('');
   const [orderContact,setOrderContact]=useState('');
   const [orderPlan,setOrderPlan]=useState('1 месяц');
   const [orders,setOrders]=useState(()=>JSON.parse(localStorage.getItem('orders')||'[]'));
   const [activityHistory,setActivityHistory]=useState(()=>JSON.parse(localStorage.getItem('dailyActivityHistory')||'[]'));
   const [lastConfig,setLastConfig]=useState('');
-  const [qr,setQr]=useState('');
   const [error,setError]=useState('');
 
   const handleError=(e)=>{
-    setError(e.message);
-    if (e.message.includes('логин') || e.message.includes('пароль')) {
+    const message = e.message === 'Unauthorized' ? t('wrongAuth') : e.message;
+    setError(message);
+    if (e.message === 'Unauthorized' || message.includes('логин') || message.includes('пароль')) {
       setIsLoggedIn(false);
       setClients([]);
       setDump('');
     }
   };
 
-  const load=async({manual=false}={})=>{
-    setIsLoading(true);
+  const loadServers=async()=>{
+    const r=await api('/api/servers');
+    const j=await r.json();
+    const next = j.servers || [];
+    setServers(next);
+    if (!next.some(server=>server.id===activeServerId)) {
+      const first = next[0]?.id || 'local';
+      setActiveServerId(first);
+      setClientServerId(first);
+      localStorage.setItem('activeServerId', first);
+      return first;
+    }
+    return activeServerId;
+  };
+
+  const loadClients=async(serverId=activeServerId,{manual=false}={})=>{
+    if (manual) setIsRefreshing(true);
     setError('');
     try {
-      const r=await api('/api/clients');
+      const query = serverId ? `?server_id=${encodeURIComponent(serverId)}` : '';
+      const r=await api(`/api/clients${query}`);
       const j=await r.json();
       setClients(j.clients||[]); setDump(j.dump||'');
       setRefreshSeq(seq=>seq + 1);
       setIsLoggedIn(true);
       if (manual) {
-        setNotice('Данные обновлены');
+        setNotice(t('dataUpdated'));
         setTimeout(()=>setNotice(''), 2500);
       }
     } finally {
-      setIsLoading(false);
+      if (manual) setIsRefreshing(false);
+    }
+  };
+
+  const load=async({manual=false}={})=>{
+    const serverId = await loadServers().catch(handleError);
+    if (serverId) {
+      await loadClients(serverId, {manual}).catch(handleError);
     }
   };
 
@@ -146,52 +240,113 @@ function App(){
     setClientConfigs(next);
     localStorage.setItem('clientConfigs', JSON.stringify(next));
   };
+  const fetchClientConfig=async(publicKey, serverId=activeServerId)=>{
+    const query = serverId ? `&server_id=${encodeURIComponent(serverId)}` : '';
+    const r=await api(`/api/client-config?public_key=${encodeURIComponent(publicKey)}${query}`);
+    return await r.text();
+  };
+  const copyText=async(text, success='Скопировано')=>{
+    const value = String(text || '');
+    if (!value) throw new Error(t('noCopyData'));
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = value;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setNotice(success);
+    setTimeout(()=>setNotice(''), 2000);
+  };
   const create=async()=>{
     const targetServer = servers.find(s=>s.id===clientServerId);
     if(!targetServer || !serverConnection(targetServer)){
-      setError('Выбранный сервер недоступен. Выбери активный сервер или отредактируй подключение.');
+      setError(t('serverUnavailable'));
       return;
     }
-    const r=await api('/api/clients',{method:'POST',body:JSON.stringify({name})});
-    const j=await r.json(); setLastConfig(j.config); saveClientConfig(j.publicKey, j.config); setName(''); setShowClientForm(false); await load();
-    const qrRes=await api('/api/qrcode',{method:'POST',body:JSON.stringify({config:j.config})});
-    const qrUrl = URL.createObjectURL(await qrRes.blob());
-    setQr(qrUrl);
-    setSelectedQr(qrUrl);
+    const query = clientServerId ? `?server_id=${encodeURIComponent(clientServerId)}` : '';
+    const r=await api(`/api/clients${query}`,{method:'POST',body:JSON.stringify({name, term:clientTerm})});
+    const j=await r.json();
+    setLastConfig(j.config);
+    saveClientConfig(j.publicKey, j.config);
+    setName('');
+    setClientTerm('admin');
+    setShowClientForm(false);
+    await load();
     setSelectedConfig(j.config);
+    await copyText(j.config, t('configCreatedCopied')).catch(()=>setNotice(t('configCreated')));
+  };
+  const importClient=async()=>{
+    const query = clientServerId ? `?server_id=${encodeURIComponent(clientServerId)}` : '';
+    const r=await api(`/api/client-import${query}`,{method:'POST',body:JSON.stringify({name:importName,config:importConfig})});
+    const j=await r.json();
+    saveClientConfig(j.publicKey, j.config);
+    setImportName('');
+    setImportConfig('');
+    setShowImportForm(false);
+    await load();
+    setSelectedConfig(j.config);
+    await copyText(j.config, t('configSavedCopied')).catch(()=>setNotice(t('configSaved')));
   };
 
-  const remove=async(pk)=>{ if(!confirm('Удалить клиента?')) return; await api('/api/clients/'+encodeURIComponent(pk),{method:'DELETE'}); await load(); };
+  const remove=async(pk)=>{
+    if(!confirm(t('deleteClient'))) return;
+    const savedConfig = clientConfigs[pk];
+    const query = activeServerId ? `?server_id=${encodeURIComponent(activeServerId)}` : '';
+    await api('/api/clients/'+encodeURIComponent(pk)+query,{method:'DELETE'});
+    if (savedConfig) {
+      const next = {...clientConfigs};
+      delete next[pk];
+      setClientConfigs(next);
+      localStorage.setItem('clientConfigs', JSON.stringify(next));
+      if (selectedConfig === savedConfig || lastConfig === savedConfig) {
+        closeIssuedConfig();
+      }
+    }
+    await load();
+  };
   const downloadConfig=(config, filename='amneziawg-client.conf')=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([config],{type:'text/plain'})); a.download=filename; a.click(); };
   const download=()=>downloadConfig(lastConfig);
-  const showQr=async(config)=>{
-    setSelectedConfig(config);
-    const qrRes=await api('/api/qrcode',{method:'POST',body:JSON.stringify({config})});
-    setSelectedQr(URL.createObjectURL(await qrRes.blob()));
+  const downloadClientConfig=async(publicKey, fallbackName='client', serverId=activeServerId)=>{
+    const config = await fetchClientConfig(publicKey, serverId).catch(()=>clientConfigs[publicKey]);
+    if (!config) throw new Error(t('configUnavailable'));
+    downloadConfig(config, `${fallbackName || publicKey || 'client'}.conf`);
   };
-  const copyKey=async(key)=>{ await navigator.clipboard.writeText(key); setNotice('Ключ скопирован'); setTimeout(()=>setNotice(''), 2000); };
-  const closeIssuedConfig=()=>{ setSelectedQr(''); setSelectedConfig(''); setLastConfig(''); setQr(''); };
+  const copyClientConfig=async(publicKey, serverId=activeServerId)=>{
+    const config = await fetchClientConfig(publicKey, serverId).catch(()=>clientConfigs[publicKey]);
+    if (!config) throw new Error(t('configUnavailable'));
+    await copyText(config, t('configCopied'));
+  };
+  const closeIssuedConfig=()=>{ setSelectedConfig(''); setLastConfig(''); };
   const logout=async()=>{ await api('/api/logout',{method:'POST'}).catch(()=>{}); setIsLoggedIn(false); setClients([]); setDump(''); setError(''); setNotice(''); };
-  const saveServers=(next)=>{ setServers(next); localStorage.setItem('servers',JSON.stringify(next)); };
-  const addServer=()=>{
-    if(!serverName.trim() || !serverIp.trim() || !serverPort.trim()) return;
+  const addServer=async()=>{
+    if(!serverName.trim() || !serverBaseUrl.trim() || !serverToken.trim()) return;
     if(editingServerId){
-      saveServers(servers.map(s=>s.id===editingServerId?{...s,name:serverName.trim(),ip:serverIp.trim(),port:serverPort.trim(),token:serverToken.trim()}:s));
+      await api('/api/servers/'+encodeURIComponent(editingServerId),{method:'PUT',body:JSON.stringify({name:serverName.trim(),baseUrl:serverBaseUrl.trim(),token:serverToken.trim()})});
+      await loadServers();
+      await loadClients(activeServerId).catch(handleError);
     } else {
-      const id = crypto.randomUUID();
-      saveServers([...servers,{id,name:serverName.trim(),ip:serverIp.trim(),port:serverPort.trim(),token:serverToken.trim()}]);
-      setActiveServerId(id);
-      localStorage.setItem('activeServerId',id);
+      const r=await api('/api/servers',{method:'POST',body:JSON.stringify({name:serverName.trim(),baseUrl:serverBaseUrl.trim(),token:serverToken.trim()})});
+      const j=await r.json();
+      await loadServers();
+      if (j.server?.id) {
+        await selectServer(j.server.id);
+      }
     }
-    setServerName(''); setServerIp(''); setServerPort(''); setServerToken(''); setShowServerForm(false);
+    setServerName(''); setServerBaseUrl(''); setServerToken(''); setShowServerForm(false);
     setEditingServerId(null);
   };
-  const selectServer=(id)=>{ setActiveServerId(id); localStorage.setItem('activeServerId',id); };
+  const selectServer=(id)=>{ setActiveServerId(id); setClientServerId(id); localStorage.setItem('activeServerId',id); if(id) loadClients(id).catch(handleError); };
   const editServer=(server)=>{
     setEditingServerId(server.id);
     setServerName(server.name);
-    setServerIp(server.ip || server.endpoint?.split(':')[0] || '');
-    setServerPort(server.port || server.endpoint?.split(':')[1] || '');
+    setServerBaseUrl(server.baseUrl || '');
     setServerToken(server.token || '');
     setShowServerForm(true);
   };
@@ -199,20 +354,20 @@ function App(){
     setShowServerForm(false);
     setEditingServerId(null);
     setServerName('');
-    setServerIp('');
-    setServerPort('');
+    setServerBaseUrl('');
     setServerToken('');
   };
   const deleteServer=(id)=>{
-    const next = servers.filter(s=>s.id!==id);
-    saveServers(next);
-    if(activeServerId===id && next[0]) selectServer(next[0].id);
+    if(id === 'local') return;
+    api('/api/servers/'+encodeURIComponent(id),{method:'DELETE'})
+      .then(async()=>{ const next = await loadServers(); if(activeServerId===id) selectServer(next); })
+      .catch(handleError);
   };
   const saveOrders=(next)=>{ setOrders(next); localStorage.setItem('orders',JSON.stringify(next)); };
   const addOrder=()=>{
     const title = orderName.trim();
     if(!title) return;
-    saveOrders([{id:crypto.randomUUID(), name:title, contact:orderContact.trim(), plan:orderPlan, status:'Новый', created:new Date().toLocaleString('ru-RU')}, ...orders]);
+    saveOrders([{id:crypto.randomUUID(), name:title, contact:orderContact.trim(), plan:orderPlan, status:'new', created:new Date().toLocaleString('ru-RU')} , ...orders]);
     setOrderName(''); setOrderContact('');
   };
   const updateOrder=(id,status)=>saveOrders(orders.map(o=>o.id===id?{...o,status}:o));
@@ -221,21 +376,38 @@ function App(){
   useEffect(()=>{ load().catch(()=>setIsLoggedIn(false)).finally(()=>setCheckingSession(false)); },[]);
 
   const nav = [
-    ['home','Главная',Home],
-    ['clients','Клиенты',Users],
-    ['orders','Заказы',ShoppingCart],
-    ['server','Серверы',Server],
+    ['home',t('home'),Home],
+    ['clients',t('clients'),Users],
+    ['expired',t('expired'),UserX],
+    ['orders',t('orders'),ShoppingCart],
+    ['server',t('servers'),Server],
   ];
   const authed = isLoggedIn;
-  const activeServer = servers.find(s=>s.id===activeServerId) || servers[0];
-  const serverConnection = (server)=>server.id==='main' && authed && Boolean(dump || clients.length);
+  const activeServer = servers.find(s=>s.id===activeServerId) || servers[0] || {id:'local', name:'Current panel', baseUrl:'local', status:'online'};
+  const serverConnection = (server)=>Boolean(server) && (server.id === 'local' || server.status === 'online');
+  const activeClientsList = clients.filter(client=>!client.blocked);
+  const pendingRenewalClients = clients.filter(client=>client.blocked || ['not_renewed','renewal_pending'].includes(client.status));
   const peerStats = parsePeerStats(dump);
   const peerStatsByKey = Object.fromEntries(peerStats.map(peer=>[peer.publicKey, peer]));
   const nowSeconds = Math.floor(Date.now() / 1000);
   const activeClientCount = peerStats.filter(peer=>peer.latest && nowSeconds - peer.latest < 60).length;
   const totalRx = peerStats.reduce((sum,peer)=>sum + peer.rx, 0);
   const totalTx = peerStats.reduce((sum,peer)=>sum + peer.tx, 0);
-  const activeServerCount = servers.filter(serverConnection).length;
+  const activeServerCount = servers.filter(server=>server.status === 'online').length;
+  const orderCounts = orderStatuses.reduce((counts,[status])=>({
+    ...counts,
+    [status]: orders.filter(order=>normalizeOrderStatus(order.status) === status).length,
+  }), {});
+
+  useEffect(()=>{
+    if (!isLoggedIn || !servers.length) return;
+    if (!servers.some(server=>server.id===activeServerId)) {
+      const next = servers[0].id;
+      setActiveServerId(next);
+      localStorage.setItem('activeServerId', next);
+      loadClients(next).catch(handleError);
+    }
+  },[isLoggedIn, servers, activeServerId]);
 
   useEffect(()=>{
     if(!isLoggedIn) return;
@@ -258,35 +430,39 @@ function App(){
   },[isLoggedIn]);
 
   const clientStatus = (publicKey)=>{
+    const client = clients.find(item=>item.PublicKey === publicKey);
+    if (client?.blocked) return {label:t('renewalPending'), className:'expired'};
     const stat = peerStatsByKey[publicKey];
-    if(!stat?.latest) return {label:'Оффлайн', className:'muted'};
+    if(!stat?.latest) return {label:t('offline'), className:'muted'};
     const age = nowSeconds - stat.latest;
-    if(age < 60) return {label:'Онлайн', className:'ok'};
-    if(age < 900) return {label:'Недавно', className:'warn'};
-    return {label:'Оффлайн', className:'muted'};
+    if(age < 60) return {label:t('online'), className:'ok'};
+    if(age < 900) return {label:t('recent'), className:'warn'};
+    return {label:t('offline'), className:'muted'};
   };
 
-  if(checkingSession) return <main className="auth-page"><section className="card login-card"><h1>AmneziaWG Admin</h1><p>Проверка сессии</p></section></main>;
+  if(checkingSession) return <main className="auth-page"><section className="card login-card"><h1>AmneziaWG Admin</h1><p>{t('checking')}</p></section></main>;
 
   if(!isLoggedIn) return <main className="auth-page">
     <section className="card login-card">
       <h1>AmneziaWG Admin</h1>
-      <p>Вход в панель управления</p>
-      <label>Логин</label>
+      <p>{t('signInTitle')}</p>
+      <div className="language-switch"><button className={lang==='ru'?'active secondary':'secondary'} onClick={()=>setLanguage('ru')}>RU</button><button className={lang==='en'?'active secondary':'secondary'} onClick={()=>setLanguage('en')}>EN</button></div>
+      <label>{t('login')}</label>
       <input value={username} onChange={e=>setUsername(e.target.value)} placeholder="admin" autoComplete="username" />
-      <label>Пароль</label>
+      <label>{t('password')}</label>
       <input value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') login().catch(handleError); }} placeholder="admin123" type="password" autoComplete="current-password" />
-      <button onClick={()=>login().catch(handleError)}><RefreshCw size={16}/>Войти</button>
+      <button onClick={()=>login().catch(handleError)}><RefreshCw size={16}/>{t('signIn')}</button>
       {error && <pre className="error">{error}</pre>}
     </section>
   </main>;
 
   return <main>
     <header className="topbar">
-      <div><h1>AmneziaWG Admin</h1><p>{activeServer?.name || 'Сервер не выбран'} · {activeServer ? `${activeServer.ip}:${activeServer.port}` : 'endpoint не задан'}</p></div>
+      <div><h1>AmneziaWG Admin</h1><p>{activeServer?.name || t('noServer')} · {activeServer?.kind === 'local' ? t('localServer') : (activeServer?.baseUrl || t('noEndpoint'))}</p></div>
       <div className="actions">
-        <button disabled={isLoading} onClick={()=>load({manual:true}).catch(handleError)}><RefreshCw size={16}/>{isLoading?'Обновление':'Обновить'}</button>
-        <button className="secondary" onClick={logout}><LogOut size={16}/>Выйти</button>
+        <div className="language-switch"><button className={lang==='ru'?'active secondary':'secondary'} onClick={()=>setLanguage('ru')}>RU</button><button className={lang==='en'?'active secondary':'secondary'} onClick={()=>setLanguage('en')}>EN</button></div>
+        <button disabled={isRefreshing} onClick={()=>load({manual:true}).catch(handleError)}><RefreshCw size={16}/>{isRefreshing?t('refreshing'):t('refresh')}</button>
+        <button className="secondary" onClick={logout}><LogOut size={16}/>{t('logout')}</button>
       </div>
     </header>
 
@@ -299,117 +475,209 @@ function App(){
 
     {view==='home' && <>
       <section className="dashboard-grid">
-        <div className="card metric"><Users size={22}/><span>Всего клиентов</span><strong>{clients.length}</strong></div>
-        <div className="card metric"><Activity size={22}/><span>Активные клиенты</span><strong>{activeClientCount}</strong></div>
-        <div className="card metric"><ShoppingCart size={22}/><span>Заказы</span><strong>{orders.length}</strong></div>
-        <div className="card metric"><Server size={22}/><span>Серверы / активные</span><strong>{servers.length} / {activeServerCount}</strong></div>
+        <div className="card metric"><Users size={22}/><span>{t('totalClients')}</span><strong>{clients.length}</strong></div>
+        <div className="card metric"><Activity size={22}/><span>{t('activeClients')}</span><strong>{activeClientCount}</strong></div>
+        <div className="card metric"><ShoppingCart size={22}/><span>{t('orders')}</span><strong>{orders.length}</strong></div>
+        <div className="card metric"><Server size={22}/><span>{t('serversActive')}</span><strong>{servers.length} / {activeServerCount}</strong></div>
       </section>
       <section className="home-layout">
         <div className="card chart-card">
-          <div className="panel-head"><div><h2>Активные пользователи</h2><p>Максимум онлайн-клиентов по дням</p></div><span className="badge ok">Сейчас: {activeClientCount}</span></div>
-          <ActivityChart points={activityHistory}/>
-          <div className="chart-labels">{chartDays(activityHistory).map(point=><span key={point.date}>{dateLabel(point.date)}</span>)}</div>
+          <div className="panel-head"><div><h2>{t('activeUsers')}</h2><p>{t('maxOnline')}</p></div><span className="badge ok">{t('now')}: {activeClientCount}</span></div>
+          <ActivityChart points={activityHistory} lang={lang}/>
+          <div className="chart-labels">{chartDays(activityHistory).map(point=><span key={point.date}>{dateLabel(point.date, lang)}</span>)}</div>
         </div>
         <div className="card traffic-card">
-          <h2>Трафик</h2>
-          <div className="traffic-row"><span>Прием данных</span><strong>{formatMb(totalRx)}</strong></div>
-          <div className="traffic-row"><span>Отдача данных</span><strong>{formatMb(totalTx)}</strong></div>
-          <div className="traffic-row muted"><span>Peers в dump</span><strong>{peerStats.length}</strong></div>
+          <h2>{t('traffic')}</h2>
+          <div className="traffic-row"><span>{t('rx')}</span><strong>{formatMb(totalRx)}</strong></div>
+          <div className="traffic-row"><span>{t('tx')}</span><strong>{formatMb(totalTx)}</strong></div>
+          <div className="traffic-row muted"><span>{t('peersDump')}</span><strong>{peerStats.length}</strong></div>
         </div>
       </section>
     </>}
 
     {view==='clients' && <>
       <section className="section-head">
-        <div><h2>Клиенты</h2><p>Создание, выдача конфигов и QR-кодов для выбранного сервера</p></div>
-        <button onClick={()=>setShowClientForm(true)}><Plus size={16}/>Создать клиента</button>
+        <div><h2>{t('clients')}</h2><p>{t('clientsSub')}</p></div>
+        <div className="actions">
+          <button className="secondary" onClick={()=>setShowImportForm(true)}><Upload size={16}/>{t('importConf')}</button>
+          <button onClick={()=>setShowClientForm(true)}><Plus size={16}/>{t('createClient')}</button>
+        </div>
       </section>
+
+      {showImportForm && <section className="card add-panel">
+        <div className="panel-head">
+          <h2>{t('importTitle')}</h2>
+          <button className="secondary" onClick={()=>setShowImportForm(false)}>{t('close')}</button>
+        </div>
+        <div className="client-form-grid">
+          <label>{t('clientName')}<input value={importName} onChange={e=>setImportName(e.target.value)} placeholder="Android Evgeny" /></label>
+        </div>
+        <label>{t('readyConf')}<textarea value={importConfig} onChange={e=>setImportConfig(e.target.value)} placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = ...&#10;&#10;[Peer]&#10;PublicKey = ..." /></label>
+        <button onClick={()=>importClient().catch(handleError)} disabled={!importConfig.trim()}><Upload size={16}/>{t('saveCopy')}</button>
+      </section>}
 
       {showClientForm && <section className="card add-panel">
         <div className="panel-head">
-          <h2>Создать клиента</h2>
-          <button className="secondary" onClick={()=>setShowClientForm(false)}>Закрыть</button>
+          <h2>{t('createClient')}</h2>
+          <button className="secondary" onClick={()=>setShowClientForm(false)}>{t('close')}</button>
         </div>
         <div className="client-form-grid">
-          <label>Имя клиента<input value={name} onChange={e=>setName(e.target.value)} placeholder="Например iPhone Evgeny" /></label>
-          <label>Сервер<select value={clientServerId} onChange={e=>setClientServerId(e.target.value)}>
-            {servers.map(server=><option key={server.id} value={server.id}>{server.name} · {server.ip}:{server.port}</option>)}
+          <label>{t('clientName')}<input value={name} onChange={e=>setName(e.target.value)} placeholder="iPhone Evgeny" /></label>
+          <label>{t('server')}<select value={clientServerId} onChange={e=>setClientServerId(e.target.value)}>
+            {servers.map(server=><option key={server.id} value={server.id}>{server.name} · {server.kind === 'local' ? t('localServer') : server.baseUrl}</option>)}
+          </select></label>
+          <label>{t('term')}<select value={clientTerm} onChange={e=>setClientTerm(e.target.value)}>
+            {clientTerms.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
           </select></label>
         </div>
-        <button onClick={()=>create().catch(handleError)}><Plus size={16}/>Создать и выдать config</button>
+        <button onClick={()=>create().catch(handleError)}><Plus size={16}/>{t('createIssue')}</button>
       </section>}
 
-      {(selectedQr || selectedConfig) && <section className="card split">
-        <div><div className="panel-head"><h2>Выданный конфиг</h2><button className="secondary" onClick={closeIssuedConfig}>Закрыть</button></div>{selectedConfig && <pre>{selectedConfig}</pre>}<button onClick={()=>downloadConfig(selectedConfig)}><Download size={16}/>Скачать .conf</button></div>
-        {selectedQr && <img className="qr" src={selectedQr}/>}
+      {selectedConfig && <section className="card issued-config">
+        <div className="panel-head">
+          <h2>{t('issuedConf')}</h2>
+          <button className="secondary" onClick={closeIssuedConfig}>{t('close')}</button>
+        </div>
+        <pre>{selectedConfig}</pre>
       </section>}
 
       <section className="card">
-        <table><thead><tr><th>Имя</th><th>Сервер</th><th>Статус</th><th>PublicKey</th><th>Allowed IPs</th><th></th></tr></thead><tbody>
-          {clients.map(c=>{ const status = clientStatus(c.PublicKey); const config = clientConfigs[c.PublicKey]; return <tr key={c.PublicKey}>
+        <div className="panel-head"><div><h2>{t('activeClients')}</h2><p>{t('activeClientsSub')}</p></div><span className="badge ok">{activeClientsList.length}</span></div>
+        <table><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+          {activeClientsList.map(c=>{ const status = clientStatus(c.PublicKey); return <tr key={c.PublicKey}>
             <td>{c.name||'—'}</td>
             <td>{activeServer?.name || '—'}</td>
             <td><span className={`badge ${status.className}`}>{status.label}</span></td>
+            <td>{c.expiresAt ? <span className={`badge ${isExpired(c.expiresAt) ? 'expired' : 'muted'}`}>{formatDate(c.expiresAt, lang)}</span> : <span className="badge admin">{t('admin')}</span>}</td>
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">
-              <button className="secondary" onClick={()=>copyKey(c.PublicKey)}>Ключ</button>
-              <button className="secondary" disabled={!config} onClick={()=>downloadConfig(config, `${c.name||'client'}.conf`)}><Download size={16}/></button>
-              <button className="secondary" disabled={!config} onClick={()=>showQr(config).catch(handleError)}>QR</button>
+              <button className="secondary" onClick={()=>copyClientConfig(c.PublicKey).catch(handleError)}>{t('key')}</button>
+              <button className="secondary" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client').catch(handleError)}><Download size={16}/></button>
               <button className="danger" onClick={()=>remove(c.PublicKey).catch(handleError)}><Trash2 size={16}/></button>
             </td>
           </tr> })}
         </tbody></table>
       </section>
+
+      {pendingRenewalClients.length > 0 && <section className="card">
+        <div className="panel-head"><div><h2>{t('expiredClients')}</h2><p>{t('expiredClientsSub')}</p></div><span className="badge expired">{pendingRenewalClients.length}</span></div>
+        <table><thead><tr><th>{t('name')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+          {pendingRenewalClients.map(c=><tr key={c.PublicKey}>
+            <td>{c.name||'—'}</td>
+            <td><span className="badge expired">{t('renewalPending')}</span></td>
+            <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>
+            <td>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
+            <td className="mono">{c.PublicKey}</td>
+            <td>{c.AllowedIPs}</td>
+            <td className="table-actions">
+              <button className="secondary" onClick={()=>copyClientConfig(c.PublicKey).catch(handleError)}>{t('key')}</button>
+              <button className="secondary" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client').catch(handleError)}><Download size={16}/></button>
+              <button className="danger" onClick={()=>remove(c.PublicKey).catch(handleError)}><Trash2 size={16}/></button>
+            </td>
+          </tr>)}
+        </tbody></table>
+      </section>}
+    </>}
+
+    {view==='expired' && <>
+      <section className="section-head">
+        <div><h2>{t('expiredClients')}</h2><p>{t('expiredClientsSub')}</p></div>
+        <span className="badge expired">{pendingRenewalClients.length}</span>
+      </section>
+      <section className="card">
+        <table><thead><tr><th>{t('name')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+          {pendingRenewalClients.map(c=><tr key={c.PublicKey}>
+            <td>{c.name||'—'}</td>
+            <td><span className="badge expired">{t('renewalPending')}</span></td>
+            <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>
+            <td>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
+            <td className="mono">{c.PublicKey}</td>
+            <td>{c.AllowedIPs}</td>
+            <td className="table-actions">
+              <button className="secondary" onClick={()=>copyClientConfig(c.PublicKey).catch(handleError)}>{t('key')}</button>
+              <button className="secondary" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client').catch(handleError)}><Download size={16}/></button>
+              <button className="danger" onClick={()=>remove(c.PublicKey).catch(handleError)}><Trash2 size={16}/></button>
+            </td>
+          </tr>)}
+        </tbody></table>
+      </section>
     </>}
 
     {view==='orders' && <>
-      <section className="card order-form">
-        <input value={orderName} onChange={e=>setOrderName(e.target.value)} placeholder="Клиент или название заказа" />
-        <input value={orderContact} onChange={e=>setOrderContact(e.target.value)} placeholder="Контакт: Telegram, телефон, email" />
-        <select value={orderPlan} onChange={e=>setOrderPlan(e.target.value)}>
-          <option>1 месяц</option><option>3 месяца</option><option>6 месяцев</option><option>12 месяцев</option>
-        </select>
-        <button onClick={addOrder}><Plus size={16}/>Добавить</button>
+      <section className="section-head">
+        <div><h2>{t('orders')}</h2><p>{t('ordersSub')}</p></div>
+        <span className="badge ok">{t('allOrders')}: {orders.length}</span>
       </section>
+
+      <section className="order-stats">
+        {orderStatuses.map(([status,label,Icon])=><div className="card order-stat" key={status}>
+          <Icon size={20}/>
+          <span>{t(label)}</span>
+          <strong>{orderCounts[status] || 0}</strong>
+        </div>)}
+      </section>
+
+      <section className="card add-panel">
+        <div className="panel-head"><div><h2>{t('newOrder')}</h2><p>{t('ordersSub')}</p></div></div>
+        <div className="order-form-grid">
+          <label>{t('clients')}<input value={orderName} onChange={e=>setOrderName(e.target.value)} placeholder={t('clientOrOrder')} /></label>
+          <label>{t('contact')}<input value={orderContact} onChange={e=>setOrderContact(e.target.value)} placeholder={t('contact')} /></label>
+          <label>{t('plan')}<select value={orderPlan} onChange={e=>setOrderPlan(e.target.value)}>
+            <option>{t('oneMonth')}</option><option>{t('threeMonths')}</option><option>{t('sixMonths')}</option><option>{t('oneYear')}</option>
+          </select></label>
+        </div>
+        <button onClick={addOrder} disabled={!orderName.trim()}><Plus size={16}/>{t('add')}</button>
+      </section>
+
       <section className="card">
-        <h2>Заказы</h2>
-        <table><thead><tr><th>Клиент</th><th>Контакт</th><th>Тариф</th><th>Статус</th><th></th></tr></thead><tbody>
-          {orders.map(o=><tr key={o.id}><td>{o.name}<small>{o.created}</small></td><td>{o.contact||'—'}</td><td>{o.plan}</td><td><select value={o.status} onChange={e=>updateOrder(o.id,e.target.value)}><option>Новый</option><option>Оплачен</option><option>Выдан</option><option>Закрыт</option></select></td><td><button className="danger" onClick={()=>deleteOrder(o.id)}><Trash2 size={16}/></button></td></tr>)}
-        </tbody></table>
+        <div className="panel-head"><div><h2>{t('recentOrders')}</h2><p>{t('allOrders')}: {orders.length}</p></div></div>
+        {orders.length === 0 ? <p>{t('noOrders')}</p> : <table className="orders-table"><thead><tr><th>{t('clients')}</th><th>{t('contact')}</th><th>{t('plan')}</th><th>{t('status')}</th><th></th></tr></thead><tbody>
+          {orders.map(o=>{ const normalizedStatus = normalizeOrderStatus(o.status); return <tr key={o.id}>
+            <td><strong>{o.name}</strong><small>{t('created')}: {o.created}</small></td>
+            <td>{o.contact||'—'}</td>
+            <td><span className="badge admin">{o.plan}</span></td>
+            <td>
+              <span className={`badge ${orderStatusClass(o.status)}`}>{t(normalizedStatus)}</span>
+              <select value={normalizedStatus} onChange={e=>updateOrder(o.id,e.target.value)} aria-label={t('status')}>
+                {orderStatuses.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
+              </select>
+            </td>
+            <td className="table-actions"><button className="danger" onClick={()=>deleteOrder(o.id)}><Trash2 size={16}/></button></td>
+          </tr> })}
+        </tbody></table>}
       </section>
     </>}
 
     {view==='server' && <>
       <section className="section-head">
-        <div><h2>Серверы</h2><p>Список подключений для будущего управления несколькими VPS</p></div>
-        <button onClick={()=>setShowServerForm(true)}><Plus size={16}/>Добавить сервер</button>
+        <div><h2>{t('servers')}</h2><p>{t('serversSub')}</p></div>
+        <button onClick={()=>setShowServerForm(true)}><Plus size={16}/>{t('addServer')}</button>
       </section>
       {showServerForm && <section className="card add-panel">
         <div className="panel-head">
-          <h2>{editingServerId?'Редактировать сервер':'Добавить сервер'}</h2>
-          <button className="secondary" onClick={closeServerForm}>Закрыть</button>
+          <h2>{editingServerId?t('editServer'):t('addServer')}</h2>
+          <button className="secondary" onClick={closeServerForm}>{t('close')}</button>
         </div>
         <div className="server-form-grid">
-          <label>Название<input value={serverName} onChange={e=>setServerName(e.target.value)} placeholder="Например VPS NL" /></label>
-          <label>IP<input value={serverIp} onChange={e=>setServerIp(e.target.value)} placeholder="45.15.152.113" /></label>
-          <label>Port<input value={serverPort} onChange={e=>setServerPort(e.target.value)} placeholder="47074" inputMode="numeric" /></label>
-          <label>Token<input value={serverToken} onChange={e=>setServerToken(e.target.value)} placeholder="Token сервера" type="password" /></label>
+          <label>{t('title')}<input value={serverName} onChange={e=>setServerName(e.target.value)} placeholder="VPS NL" /></label>
+          <label>{t('panelUrl')}<input value={serverBaseUrl} onChange={e=>setServerBaseUrl(e.target.value)} placeholder="http://45.15.152.113:8080" /></label>
+          <label>{t('token')}<input value={serverToken} onChange={e=>setServerToken(e.target.value)} placeholder={t('token')} type="password" /></label>
         </div>
-        <button onClick={addServer}><Plus size={16}/>Сохранить сервер</button>
+        <button onClick={()=>addServer().catch(handleError)}><Plus size={16}/>{t('saveServer')}</button>
       </section>}
       <section className="card">
-        <table className="server-table"><thead><tr><th>Название</th><th>Endpoint</th><th>Token</th><th>Статус</th><th></th></tr></thead><tbody>
+        <table className="server-table"><thead><tr><th>{t('title')}</th><th>{t('endpoint')}</th><th>{t('token')}</th><th>{t('status')}</th><th></th></tr></thead><tbody>
           {servers.map(s=><tr key={s.id} className={s.id===activeServerId?'selected-row':''}>
-            <td><strong>{s.name}</strong>{s.id===activeServerId && <small>Активный сервер</small>}</td>
-            <td className="mono">{s.ip || s.endpoint?.split(':')[0]}:{s.port || s.endpoint?.split(':')[1]}</td>
-            <td>{s.token?<span className="badge ok">Задан</span>:<span className="badge muted">Не задан</span>}</td>
-            <td>{serverConnection(s)?<span className="badge ok">Активен</span>:<span className="badge warn">Неактивен · редактировать</span>}</td>
-            <td className="table-actions"><button className="secondary" onClick={()=>selectServer(s.id)}>Выбрать</button><button className="secondary" onClick={()=>editServer(s)}>Редактировать</button>{s.id!=='main' && <button className="danger" onClick={()=>deleteServer(s.id)}><Trash2 size={16}/></button>}</td>
+            <td><strong>{s.name}</strong>{s.id===activeServerId && <small>{t('activeServer')}</small>}</td>
+            <td className="mono">{s.kind === 'local' ? t('localServer') : s.baseUrl}</td>
+            <td>{s.kind === 'local' ? <span className="badge ok">{t('set')}</span> : (s.token ? <span className="badge ok">{t('set')}</span> : <span className="badge muted">{t('notSet')}</span>)}</td>
+            <td>{serverConnection(s)?<span className="badge ok">{t('active')}</span>:<span className="badge warn">{t('inactiveEdit')}</span>}</td>
+            <td className="table-actions"><button className="secondary" onClick={()=>selectServer(s.id)}>{t('select')}</button>{s.id !== 'local' && <button className="secondary" onClick={()=>editServer(s)}>{t('edit')}</button>}{s.id !== 'local' && <button className="danger" onClick={()=>deleteServer(s.id)}><Trash2 size={16}/></button>}</td>
           </tr>)}
         </tbody></table>
       </section>
-      <section className="card"><h2>Активный сервер: awg dump</h2><pre>{dump||'Нет данных или awg недоступен из контейнера'}</pre></section>
+      <section className="card"><h2>{t('dumpTitle')}</h2><pre>{dump||t('noDump')}</pre></section>
     </>}
   </main>
 }

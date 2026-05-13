@@ -6,6 +6,9 @@ main{max-width:1120px;margin:0 auto;padding:32px}
 .login-card button{width:100%;margin-top:4px}
 .topbar{display:flex;justify-content:space-between;align-items:center;gap:18px}
 .actions{display:flex;gap:10px}
+.language-switch{display:inline-flex;gap:4px;background:#0f1528;border:1px solid #34405f;border-radius:12px;padding:4px}
+.language-switch button{padding:8px 10px;border-radius:8px;background:transparent}
+.language-switch button.active{background:#6377ff}
 .notice{background:#14532d;color:#dcfce7;border:1px solid #22c55e;border-radius:12px;padding:12px 16px;margin:18px 0;font-weight:700}
 .menu{display:flex;gap:10px;margin:22px 0 4px;flex-wrap:wrap}
 .menu button.active{background:#6377ff}
@@ -14,6 +17,12 @@ main{max-width:1120px;margin:0 auto;padding:32px}
 .token-row input,.order-form input{flex:1}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
 .dashboard-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.order-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.order-stat{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:10px;margin:18px 0}
+.order-stat strong{grid-column:1/3;font-size:30px}
+.order-form-grid{display:grid;grid-template-columns:1.2fr 1.2fr .8fr;gap:14px;margin-bottom:16px}
+.order-form-grid label{margin:0}
+.orders-table select{margin-top:8px;padding:9px 10px;max-width:180px}
 .home-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px}
 .chart-card,.traffic-card{margin:18px 0}
 .chart{width:100%;height:220px;display:block}
@@ -38,15 +47,23 @@ main{max-width:1120px;margin:0 auto;padding:32px}
 .badge.ok{background:#14532d;color:#bbf7d0}
 .badge.muted{background:#334155;color:#cbd5e1}
 .badge.warn{background:#713f12;color:#fde68a}
+.badge.expired{background:#7f1d1d;color:#fecaca}
+.badge.admin{background:#1e3a8a;color:#dbeafe}
 .metric{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:10px;margin:18px 0}
 .metric strong{grid-column:1/3;font-size:34px}
 .split{display:grid;grid-template-columns:1fr 280px;gap:24px}
+.qr-inline-row td{background:#0f172a;padding:12px 10px 18px}
+.qr-inline{display:flex;flex-direction:column;gap:12px}
+.qr-inline .qr{max-width:420px}
+.qr-inline pre{max-height:220px;overflow:auto}
+.issued-config pre{max-height:280px;overflow:auto}
 .server-line{display:flex;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid #26304d}
 h1{font-size:36px;margin:0}
 h2{margin-top:0}
 p{color:#aab4d6}
 label{display:block;margin-bottom:10px;color:#c8d2f0}
-input,select{width:100%;box-sizing:border-box;padding:14px;border-radius:12px;border:1px solid #34405f;background:#0f1528;color:white}
+input,select,textarea{width:100%;box-sizing:border-box;padding:14px;border-radius:12px;border:1px solid #34405f;background:#0f1528;color:white}
+textarea{min-height:220px;resize:vertical;font-family:ui-monospace,monospace;font-size:13px;line-height:1.5}
 button{display:inline-flex;gap:8px;align-items:center;justify-content:center;white-space:nowrap;border:0;border-radius:12px;background:#6377ff;color:white;padding:12px 16px;cursor:pointer}
 button:disabled{opacity:.65;cursor:not-allowed}
 .secondary{background:#334155}
@@ -58,5 +75,5 @@ small{display:block;color:#8ea0c8;margin-top:4px}
 pre{white-space:pre-wrap;word-break:break-word;background:#090d1a;border-radius:14px;padding:14px;color:#dbe4ff}
 .error{color:#fecaca}
 .qr{width:min(420px,100%);height:auto;background:white;border-radius:18px;padding:14px;box-sizing:border-box;image-rendering:pixelated}
-@media(max-width:900px){.dashboard-grid{grid-template-columns:repeat(2,1fr)}.home-layout{grid-template-columns:1fr}}
-@media(max-width:800px){main{padding:18px}.split,.row,.token-row,.order-form,.server-form,.topbar,.actions,.section-head,.panel-head{display:block}.grid,.dashboard-grid,.server-form-grid{grid-template-columns:1fr}.token-row button,.row button,.order-form button,.server-form button,.actions button,.section-head button,.panel-head button,.add-panel button{margin-top:12px;width:100%}.menu button{flex:1}.table-actions{display:block}.table-actions button{width:100%;margin-top:8px}td,th{font-size:13px;padding:10px 6px}}
+@media(max-width:900px){.dashboard-grid,.order-stats{grid-template-columns:repeat(2,1fr)}.home-layout{grid-template-columns:1fr}.order-form-grid{grid-template-columns:1fr}}
+@media(max-width:800px){main{padding:18px}.split,.row,.token-row,.order-form,.server-form,.topbar,.actions,.section-head,.panel-head{display:block}.grid,.dashboard-grid,.order-stats,.server-form-grid,.client-form-grid{grid-template-columns:1fr}.token-row button,.row button,.order-form button,.server-form button,.actions button,.section-head button,.panel-head button,.add-panel button{margin-top:12px;width:100%}.menu button{flex:1}.table-actions{display:block}.table-actions button{width:100%;margin-top:8px}.orders-table select{max-width:none}td,th{font-size:13px;padding:10px 6px}}
