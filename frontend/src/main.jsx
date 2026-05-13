@@ -28,6 +28,7 @@ const shiftDateKey = (key, days) => {
 };
 const dict = {
   ru: {
+    appName:'AmneziaWG Admin',
     today:'Сегодня', admin:'Админ', oneDay:'1 день', threeDays:'3 дня', sevenDays:'7 дней', fifteenDays:'15 дней', oneMonth:'1 месяц', threeMonths:'3 месяца', sixMonths:'6 месяцев', oneYear:'1 год',
     online:'Онлайн', offline:'Оффлайн', recent:'Недавно', renewalPending:'Ожидает продления', checking:'Проверка сессии', signInTitle:'Вход в панель управления', login:'Логин', password:'Пароль', signIn:'Войти',
     noServer:'Сервер не выбран', noEndpoint:'endpoint не задан', refresh:'Обновить', refreshing:'Обновление', logout:'Выйти', home:'Главная', clients:'Клиенты', expired:'Просроченные', orders:'Заказы', servers:'Серверы', localServer:'Локальный сервер', allServers:'Все серверы', editName:'Редактировать имя', save:'Сохранить', cancel:'Отмена',
@@ -42,9 +43,12 @@ const dict = {
     add:'Добавить', new:'Новый', paid:'Оплачен', issued:'Выдан', closed:'Закрыт', ordersSub:'Заявки, оплаты и выдача доступов клиентам.', allOrders:'Все заказы', newOrder:'Новый заказ', recentOrders:'Последние заказы', noOrders:'Заказов пока нет', created:'Создан', serversSub:'Список подключений для управления несколькими панелями VPS',
     addServer:'Добавить сервер', editServer:'Редактировать сервер', title:'Название', panelUrl:'URL панели', token:'Токен', saveServer:'Сохранить сервер', endpoint:'URL панели', set:'Задан',
     notSet:'Не задан', active:'Активен', inactiveEdit:'Неактивен · редактировать', select:'Выбрать', edit:'Редактировать', activeServer:'Активный сервер', dumpTitle:'Активный сервер: awg dump',
-    noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.', details:'Подробнее', lastSeen:'Последнее подключение', never:'Никогда', download:'Скачать', copyConfig:'Скопировать конфиг', received:'Загрузка', sent:'Отдача', createdClients:'Созданных клиентов'
+    noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.', details:'Подробнее', lastSeen:'Последнее подключение', never:'Никогда', download:'Скачать', copyConfig:'Скопировать конфиг', received:'Загрузка', sent:'Отдача', createdClients:'Созданных клиентов',
+    loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', orderNamePlaceholder:'Клиент или название заказа', contactPlaceholder:'Telegram, телефон, email', currentPanel:'Текущая панель', deleteServer:'Удалить сервер?',
+    sortBy:'Сортировка', sortNameAsc:'Имя A-Z', sortNameDesc:'Имя Z-A', sortCreatedDesc:'Дата создания, новые', sortCreatedAsc:'Дата создания, старые', sortLastSeenDesc:'Последнее подключение, новые', sortLastSeenAsc:'Последнее подключение, старые', selectAll:'Выбрать все', clearSelection:'Снять выбор', deleteSelected:'Удалить выбранные', selectedClients:'Выбрано клиентов', createdOnly:'Дата создания', lastConnection:'Последнее подключение'
   },
-  en: {
+  us: {
+    appName:'AmneziaWG Admin',
     today:'Today', admin:'Admin', oneDay:'1 day', threeDays:'3 days', sevenDays:'7 days', fifteenDays:'15 days', oneMonth:'1 month', threeMonths:'3 months', sixMonths:'6 months', oneYear:'1 year',
     online:'Online', offline:'Offline', recent:'Recent', renewalPending:'Awaiting renewal', checking:'Checking session', signInTitle:'Admin panel sign in', login:'Login', password:'Password', signIn:'Sign in',
     noServer:'No server selected', noEndpoint:'endpoint not set', refresh:'Refresh', refreshing:'Refreshing', logout:'Log out', home:'Home', clients:'Clients', expired:'Expired', orders:'Orders', servers:'Servers', localServer:'Local server', allServers:'All servers', editName:'Edit name', save:'Save', cancel:'Cancel',
@@ -59,7 +63,9 @@ const dict = {
     add:'Add', new:'New', paid:'Paid', issued:'Issued', closed:'Closed', ordersSub:'Requests, payments, and issuing client access.', allOrders:'All orders', newOrder:'New order', recentOrders:'Recent orders', noOrders:'No orders yet', created:'Created', serversSub:'Connection list for managing multiple VPS panels',
     addServer:'Add server', editServer:'Edit server', title:'Title', panelUrl:'Panel URL', token:'Token', saveServer:'Save server', endpoint:'Panel URL', set:'Set',
     notSet:'Not set', active:'Active', inactiveEdit:'Inactive · edit', select:'Select', edit:'Edit', activeServer:'Active server', dumpTitle:'Active server: awg dump',
-    noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.', details:'Details', lastSeen:'Last connected', never:'Never', download:'Download', copyConfig:'Copy config', received:'Received', sent:'Sent', createdClients:'Created clients'
+    noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.', details:'Details', lastSeen:'Last connected', never:'Never', download:'Download', copyConfig:'Copy config', received:'Received', sent:'Sent', createdClients:'Created clients',
+    loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', orderNamePlaceholder:'Client or order name', contactPlaceholder:'Telegram, phone, email', currentPanel:'Current panel', deleteServer:'Delete server?',
+    sortBy:'Sort', sortNameAsc:'Name A-Z', sortNameDesc:'Name Z-A', sortCreatedDesc:'Created newest', sortCreatedAsc:'Created oldest', sortLastSeenDesc:'Last connected newest', sortLastSeenAsc:'Last connected oldest', selectAll:'Select all', clearSelection:'Clear selection', deleteSelected:'Delete selected', selectedClients:'Selected clients', createdOnly:'Created date', lastConnection:'Last connected'
   }
 };
 
@@ -153,9 +159,13 @@ function chartDays(points) {
 
 function App(){
   const [view,setView]=useState('home');
-  const [lang,setLang]=useState(()=>localStorage.getItem('lang')||'ru');
-  const t=(key)=>dict[lang]?.[key] || dict.ru[key] || key;
-  const setLanguage=(value)=>{ setLang(value); localStorage.setItem('lang', value); };
+  const [lang,setLang]=useState(()=>{
+    const stored = localStorage.getItem('lang') || 'ru';
+    return stored === 'en' ? 'us' : stored;
+  });
+  const uiLang = lang === 'en' ? 'us' : lang;
+  const t=(key)=>dict[uiLang]?.[key] || dict.us[key] || dict.ru[key] || key;
+  const setLanguage=(value)=>{ setLang(value === 'en' ? 'us' : value); localStorage.setItem('lang', value === 'en' ? 'us' : value); };
   const [username,setUsername]=useState('admin');
   const [password,setPassword]=useState('');
   const [isLoggedIn,setIsLoggedIn]=useState(false);
@@ -195,6 +205,8 @@ function App(){
   const [editingClientName,setEditingClientName]=useState('');
   const [expandedClientKey,setExpandedClientKey]=useState('');
   const [expandedServerId,setExpandedServerId]=useState('');
+  const [clientSort,setClientSort]=useState('created_desc');
+  const [selectedClientKeys,setSelectedClientKeys]=useState(()=>new Set());
   const isAggregateServer = activeServerId === 'all';
 
   const handleError=(e)=>{
@@ -327,8 +339,8 @@ function App(){
     await copyText(j.config, t('configSavedCopied')).catch(()=>setNotice(t('configSaved')));
   };
 
-  const remove=async(pk, serverId=activeServerId)=>{
-    if(!confirm(t('deleteClient'))) return;
+  const remove=async(pk, serverId=activeServerId, {confirmDelete=true}={})=>{
+    if(confirmDelete && !confirm(t('deleteClient'))) return;
     const savedConfig = clientConfigs[pk];
     const params = new URLSearchParams({public_key: pk});
     if (serverId) params.set('server_id', serverId);
@@ -352,6 +364,68 @@ function App(){
   const cancelEditClient=()=>{
     setEditingClientKey('');
     setEditingClientName('');
+  };
+  const clientSortValue = (client) => {
+    const created = client?.createdAt ? new Date(`${client.createdAt}T00:00:00`).getTime() : 0;
+    const lastSeen = clientPeerStat(client)?.latest ? clientPeerStat(client).latest * 1000 : 0;
+    return {created, lastSeen, name:(client?.name || '').toLowerCase()};
+  };
+  const sortClients = (list) => {
+    const next = [...list];
+    next.sort((a, b) => {
+      const av = clientSortValue(a);
+      const bv = clientSortValue(b);
+      switch (clientSort) {
+        case 'name_asc': return av.name.localeCompare(bv.name, undefined, {sensitivity:'base'});
+        case 'name_desc': return bv.name.localeCompare(av.name, undefined, {sensitivity:'base'});
+        case 'created_asc': return av.created - bv.created || av.name.localeCompare(bv.name, undefined, {sensitivity:'base'});
+        case 'created_desc': return bv.created - av.created || av.name.localeCompare(bv.name, undefined, {sensitivity:'base'});
+        case 'lastSeen_asc': return av.lastSeen - bv.lastSeen || av.name.localeCompare(bv.name, undefined, {sensitivity:'base'});
+        case 'lastSeen_desc': return bv.lastSeen - av.lastSeen || av.name.localeCompare(bv.name, undefined, {sensitivity:'base'});
+        default: return bv.created - av.created || av.name.localeCompare(bv.name, undefined, {sensitivity:'base'});
+      }
+    });
+    return next;
+  };
+  const allClientRows = [...activeClientsList, ...pendingRenewalClients];
+  const selectedClientCount = selectedClientKeys.size;
+  const allVisibleSelected = allClientRows.length > 0 && allClientRows.every(client=>selectedClientKeys.has(clientRowKey(client)));
+  const someVisibleSelected = allClientRows.some(client=>selectedClientKeys.has(clientRowKey(client)));
+  const syncSelection = (updater) => setSelectedClientKeys(current=>{
+    const next = new Set(current);
+    updater(next);
+    return next;
+  });
+  const toggleClientSelected = (client) => syncSelection(next=>{
+    const key = clientRowKey(client);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+  });
+  const toggleVisibleSelection = () => syncSelection(next=>{
+    if (allVisibleSelected) {
+      allClientRows.forEach(client=>next.delete(clientRowKey(client)));
+      return;
+    }
+    allClientRows.forEach(client=>next.add(clientRowKey(client)));
+  });
+  const clearSelectedClients = () => setSelectedClientKeys(new Set());
+  const deleteSelectedClients = async() => {
+    if (!selectedClientCount) return;
+    if (!confirm(t('deleteClient'))) return;
+    const byKey = new Map(allClientRows.map(client=>[clientRowKey(client), client]));
+    const nextConfigs = {...clientConfigs};
+    for (const key of selectedClientKeys) {
+      const client = byKey.get(key);
+      if (!client) continue;
+      const params = new URLSearchParams({public_key: client.PublicKey});
+      if (client.serverId) params.set('server_id', client.serverId);
+      await api(`/api/clients?${params.toString()}`,{method:'DELETE'});
+      if (nextConfigs[client.PublicKey]) delete nextConfigs[client.PublicKey];
+    }
+    setClientConfigs(nextConfigs);
+    localStorage.setItem('clientConfigs', JSON.stringify(nextConfigs));
+    clearSelectedClients();
+    await load().catch(handleError);
   };
   const renameClient=async(client)=>{
     const nextName = editingClientName.trim();
@@ -442,7 +516,7 @@ function App(){
   const authed = isLoggedIn;
   const activeServer = isAggregateServer
     ? {id:'all', name:t('allServers'), baseUrl:'', kind:'aggregate', status:'online'}
-    : servers.find(s=>s.id===activeServerId) || servers[0] || {id:'local', name:'Current panel', baseUrl:'local', status:'online'};
+    : servers.find(s=>s.id===activeServerId) || servers[0] || {id:'local', name:t('currentPanel'), baseUrl:'local', status:'online'};
   const serverConnection = (server)=>Boolean(server) && (server.id === 'local' || server.id === 'all' || server.status === 'online');
   const serverNameById = (serverId)=>{
     if (serverId === 'all') return t('allServers');
@@ -564,8 +638,8 @@ function App(){
     return <tr className="detail-row"><td colSpan={colSpan}>
       <div className="detail-panel">
         <div className="detail-grid">
-          <div><span>{t('created')}</span><strong>{formatAnyDate(client.createdAt, lang)}</strong></div>
           <div><span>{t('lastSeen')}</span><strong>{lastSeenText(client)}</strong></div>
+          <div><span>{t('createdOnly')}</span><strong>{formatAnyDate(client.createdAt, lang)}</strong></div>
           <div><span>{t('received')}</span><strong>{formatMb(stat?.rx || 0)}</strong></div>
           <div><span>{t('sent')}</span><strong>{formatMb(stat?.tx || 0)}</strong></div>
           <div><span>{t('server')}</span><strong>{clientServerName(client)}</strong></div>
@@ -596,17 +670,17 @@ function App(){
     </td></tr>;
   };
 
-  if(checkingSession) return <main className="auth-page"><section className="card login-card"><h1>AmneziaWG Admin</h1><p>{t('checking')}</p></section></main>;
+  if(checkingSession) return <main className="auth-page"><section className="card login-card"><h1>{t('appName')}</h1><p>{t('checking')}</p></section></main>;
 
   if(!isLoggedIn) return <main className="auth-page">
     <section className="card login-card">
-      <h1>AmneziaWG Admin</h1>
+      <h1>{t('appName')}</h1>
       <p>{t('signInTitle')}</p>
-      <div className="language-switch"><button className={lang==='ru'?'active secondary':'secondary'} onClick={()=>setLanguage('ru')}>RU</button><button className={lang==='en'?'active secondary':'secondary'} onClick={()=>setLanguage('en')}>EN</button></div>
+      <div className="language-switch"><button className={lang==='ru'?'active secondary':'secondary'} onClick={()=>setLanguage('ru')}>RU</button><button className={lang==='us'?'active secondary':'secondary'} onClick={()=>setLanguage('us')}>US</button></div>
       <label>{t('login')}</label>
-      <input value={username} onChange={e=>setUsername(e.target.value)} placeholder="admin" autoComplete="username" />
+      <input value={username} onChange={e=>setUsername(e.target.value)} placeholder={t('loginPlaceholder')} autoComplete="username" />
       <label>{t('password')}</label>
-      <input value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') login().catch(handleError); }} placeholder="admin123" type="password" autoComplete="current-password" />
+      <input value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') login().catch(handleError); }} placeholder={t('passwordPlaceholder')} type="password" autoComplete="current-password" />
       <button onClick={()=>login().catch(handleError)}><RefreshCw size={16}/>{t('signIn')}</button>
       {error && <pre className="error">{error}</pre>}
     </section>
@@ -614,9 +688,9 @@ function App(){
 
   return <main>
     <header className="topbar">
-      <div><h1>AmneziaWG Admin</h1><p>{activeServer?.name || t('noServer')} · {activeServer?.kind === 'local' ? t('localServer') : activeServer?.kind === 'aggregate' ? t('allServers') : (activeServer?.baseUrl || t('noEndpoint'))}</p></div>
+      <div><h1>{t('appName')}</h1><p>{activeServer?.name || t('noServer')} · {activeServer?.kind === 'local' ? t('localServer') : activeServer?.kind === 'aggregate' ? t('allServers') : (activeServer?.baseUrl || t('noEndpoint'))}</p></div>
       <div className="actions">
-        <div className="language-switch"><button className={lang==='ru'?'active secondary':'secondary'} onClick={()=>setLanguage('ru')}>RU</button><button className={lang==='en'?'active secondary':'secondary'} onClick={()=>setLanguage('en')}>EN</button></div>
+        <div className="language-switch"><button className={lang==='ru'?'active secondary':'secondary'} onClick={()=>setLanguage('ru')}>RU</button><button className={lang==='us'?'active secondary':'secondary'} onClick={()=>setLanguage('us')}>US</button></div>
         <button disabled={isRefreshing} onClick={()=>load({manual:true}).catch(handleError)}><RefreshCw size={16}/>{isRefreshing?t('refreshing'):t('refresh')}</button>
         <button className="secondary" onClick={logout}><LogOut size={16}/>{t('logout')}</button>
       </div>
@@ -667,7 +741,7 @@ function App(){
           <button className="secondary" onClick={()=>setShowImportForm(false)}>{t('close')}</button>
         </div>
         <div className="client-form-grid">
-          <label>{t('clientName')}<input value={importName} onChange={e=>setImportName(e.target.value)} placeholder="Android Evgeny" /></label>
+          <label>{t('clientName')}<input value={importName} onChange={e=>setImportName(e.target.value)} placeholder={t('importNamePlaceholder')} /></label>
         </div>
         <label>{t('readyConf')}<textarea value={importConfig} onChange={e=>setImportConfig(e.target.value)} placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = ...&#10;&#10;[Peer]&#10;PublicKey = ..." /></label>
         <button onClick={()=>importClient().catch(handleError)} disabled={!importConfig.trim()}><Upload size={16}/>{t('saveCopy')}</button>
@@ -679,7 +753,7 @@ function App(){
           <button className="secondary" onClick={()=>setShowClientForm(false)}>{t('close')}</button>
         </div>
         <div className="client-form-grid">
-          <label>{t('clientName')}<input value={name} onChange={e=>setName(e.target.value)} placeholder="iPhone Evgeny" /></label>
+          <label>{t('clientName')}<input value={name} onChange={e=>setName(e.target.value)} placeholder={t('clientNamePlaceholder')} /></label>
           <label>{t('server')}<select value={clientServerId} onChange={e=>setClientServerId(e.target.value)}>
             {servers.map(server=><option key={server.id} value={server.id}>{server.name} · {server.kind === 'local' ? t('localServer') : server.baseUrl}</option>)}
           </select></label>
@@ -698,10 +772,32 @@ function App(){
         <pre>{selectedConfig}</pre>
       </section>}
 
+      <section className="clients-toolbar">
+        <div className="clients-toolbar-left">
+          <label className="toolbar-field">
+            <span>{t('sortBy')}</span>
+            <select value={clientSort} onChange={e=>setClientSort(e.target.value)}>
+              <option value="created_desc">{t('sortCreatedDesc')}</option>
+              <option value="created_asc">{t('sortCreatedAsc')}</option>
+              <option value="lastSeen_desc">{t('sortLastSeenDesc')}</option>
+              <option value="lastSeen_asc">{t('sortLastSeenAsc')}</option>
+              <option value="name_asc">{t('sortNameAsc')}</option>
+              <option value="name_desc">{t('sortNameDesc')}</option>
+            </select>
+          </label>
+          <div className="selection-hint">{t('selectedClients')}: {selectedClientCount}</div>
+        </div>
+        <div className="clients-toolbar-actions">
+          <button className="secondary" onClick={toggleVisibleSelection}>{allVisibleSelected ? t('clearSelection') : t('selectAll')}</button>
+          <button className="danger" onClick={()=>deleteSelectedClients().catch(handleError)} disabled={!selectedClientCount}>{t('deleteSelected')}</button>
+        </div>
+      </section>
+
       <section className="card">
         <div className="panel-head"><div><h2>{t('activeClients')}</h2><p>{t('activeClientsSub')}</p></div><span className="badge ok">{activeClientsList.length}</span></div>
-        <table className="client-table active-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('created')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {activeClientsList.map(c=>{ const key = clientRowKey(c); const status = clientStatus(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
+        <table className="client-table active-client-table"><thead><tr><th className="select-col"><input type="checkbox" className="row-select" checked={allVisibleSelected} ref={el=>{ if(el) el.indeterminate = someVisibleSelected && !allVisibleSelected; }} onChange={toggleVisibleSelection} aria-label={t('selectAll')} /></th><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('createdOnly')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+          {sortClients(activeClientsList).map(c=>{ const key = clientRowKey(c); const status = clientStatus(c); const selected = selectedClientKeys.has(key); return <React.Fragment key={key}><tr className={`clickable-row ${selected ? 'selected-row' : ''} ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
+            <td className="select-col" onClick={event=>event.stopPropagation()}><input type="checkbox" className="row-select" checked={selected} onChange={()=>toggleClientSelected(c)} aria-label={t('selectAll')} /></td>
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className={`badge ${status.className}`}>{status.label}</span></td>
@@ -710,14 +806,15 @@ function App(){
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
-          </tr>{expandedClientKey === key && renderClientDetails(c, 8)}</React.Fragment> })}
+          </tr>{expandedClientKey === key && renderClientDetails(c, 9)}</React.Fragment> })}
         </tbody></table>
       </section>
 
       {pendingRenewalClients.length > 0 && <section className="card">
         <div className="panel-head"><div><h2>{t('expiredClients')}</h2><p>{t('expiredClientsSub')}</p></div><span className="badge expired">{pendingRenewalClients.length}</span></div>
-        <table className="client-table expired-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('created')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {pendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
+        <table className="client-table expired-client-table"><thead><tr><th className="select-col"><input type="checkbox" className="row-select" checked={allVisibleSelected} ref={el=>{ if(el) el.indeterminate = someVisibleSelected && !allVisibleSelected; }} onChange={toggleVisibleSelection} aria-label={t('selectAll')} /></th><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('createdOnly')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+          {sortClients(pendingRenewalClients).map(c=>{ const key = clientRowKey(c); const selected = selectedClientKeys.has(key); return <React.Fragment key={key}><tr className={`clickable-row ${selected ? 'selected-row' : ''} ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
+            <td className="select-col" onClick={event=>event.stopPropagation()}><input type="checkbox" className="row-select" checked={selected} onChange={()=>toggleClientSelected(c)} aria-label={t('selectAll')} /></td>
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
@@ -727,7 +824,7 @@ function App(){
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
-          </tr>{expandedClientKey === key && renderClientDetails(c, 9)}</React.Fragment>})}
+          </tr>{expandedClientKey === key && renderClientDetails(c, 10)}</React.Fragment>})}
         </tbody></table>
       </section>}
     </>}
@@ -738,8 +835,9 @@ function App(){
         <span className="badge expired">{pendingRenewalClients.length}</span>
       </section>
       <section className="card">
-        <table className="client-table expired-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('created')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {pendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
+        <table className="client-table expired-client-table"><thead><tr><th className="select-col"><button type="button" className={`row-select-toggle ${allVisibleSelected ? 'selected' : someVisibleSelected ? 'partial' : ''}`} onClick={toggleVisibleSelection} aria-label={t('selectAll')}/></th><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('createdOnly')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+          {sortClients(pendingRenewalClients).map(c=>{ const key = clientRowKey(c); const selected = selectedClientKeys.has(key); return <React.Fragment key={key}><tr className={`clickable-row ${selected ? 'selected-row' : ''} ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
+            <td className="select-col" onClick={event=>event.stopPropagation()}><button type="button" className={`row-select-toggle ${selected ? 'selected' : ''}`} onClick={()=>toggleClientSelected(c)} aria-label={t('selectAll')}/></td>
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
@@ -749,7 +847,7 @@ function App(){
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
-          </tr>{expandedClientKey === key && renderClientDetails(c, 9)}</React.Fragment>})}
+          </tr>{expandedClientKey === key && renderClientDetails(c, 10)}</React.Fragment>})}
         </tbody></table>
       </section>
     </>}
@@ -771,8 +869,8 @@ function App(){
       <section className="card add-panel">
         <div className="panel-head"><div><h2>{t('newOrder')}</h2><p>{t('ordersSub')}</p></div></div>
         <div className="order-form-grid">
-          <label>{t('clients')}<input value={orderName} onChange={e=>setOrderName(e.target.value)} placeholder={t('clientOrOrder')} /></label>
-          <label>{t('contact')}<input value={orderContact} onChange={e=>setOrderContact(e.target.value)} placeholder={t('contact')} /></label>
+          <label>{t('clients')}<input value={orderName} onChange={e=>setOrderName(e.target.value)} placeholder={t('orderNamePlaceholder')} /></label>
+          <label>{t('contact')}<input value={orderContact} onChange={e=>setOrderContact(e.target.value)} placeholder={t('contactPlaceholder')} /></label>
           <label>{t('plan')}<select value={orderPlan} onChange={e=>setOrderPlan(e.target.value)}>
             <option>{t('oneMonth')}</option><option>{t('threeMonths')}</option><option>{t('sixMonths')}</option><option>{t('oneYear')}</option>
           </select></label>
@@ -819,8 +917,8 @@ function App(){
           <button className="secondary" onClick={closeServerForm}>{t('close')}</button>
         </div>
         <div className="server-form-grid">
-          <label>{t('title')}<input value={serverName} onChange={e=>setServerName(e.target.value)} placeholder="VPS NL" /></label>
-          {!editingLocalServer && <label>{t('panelUrl')}<input value={serverBaseUrl} onChange={e=>setServerBaseUrl(e.target.value)} placeholder="http://45.15.152.113:8080" /></label>}
+          <label>{t('title')}<input value={serverName} onChange={e=>setServerName(e.target.value)} placeholder={t('serverNamePlaceholder')} /></label>
+          {!editingLocalServer && <label>{t('panelUrl')}<input value={serverBaseUrl} onChange={e=>setServerBaseUrl(e.target.value)} placeholder={t('panelUrlPlaceholder')} /></label>}
           {!editingLocalServer && <label>{t('token')}<input value={serverToken} onChange={e=>setServerToken(e.target.value)} placeholder={t('token')} type="password" /></label>}
         </div>
         <button onClick={()=>addServer().catch(handleError)}><Plus size={16}/>{t('saveServer')}</button>
@@ -839,7 +937,7 @@ function App(){
             <td className="mono">{s.kind === 'local' ? t('localServer') : s.baseUrl}</td>
             <td>{s.kind === 'local' ? <span className="badge ok">{t('set')}</span> : (s.token ? <span className="badge ok">{t('set')}</span> : <span className="badge muted">{t('notSet')}</span>)}</td>
             <td>{serverConnection(s)?<span className="badge ok">{t('active')}</span>:<span className="badge warn">{t('inactiveEdit')}</span>}</td>
-            <td className="table-actions"><button className="secondary icon-button" title={t('details')} onClick={(event)=>{ event.stopPropagation(); setExpandedServerId(expandedServerId === s.id ? '' : s.id); }}><ChevronDown className={expandedServerId === s.id ? 'rotated' : ''} size={16}/></button><button className="secondary" onClick={(event)=>{ event.stopPropagation(); selectServer(s.id); }}>{t('select')}</button><button className="secondary icon-button" title={t('edit')} onClick={(event)=>{ event.stopPropagation(); editServer(s); }}><Pencil size={16}/></button>{s.id !== 'local' && <button className="danger icon-button" title={t('deleteClient')} onClick={(event)=>{ event.stopPropagation(); deleteServer(s.id); }}><Trash2 size={16}/></button>}</td>
+            <td className="table-actions"><button className="secondary icon-button" title={t('details')} onClick={(event)=>{ event.stopPropagation(); setExpandedServerId(expandedServerId === s.id ? '' : s.id); }}><ChevronDown className={expandedServerId === s.id ? 'rotated' : ''} size={16}/></button><button className="secondary" onClick={(event)=>{ event.stopPropagation(); selectServer(s.id); }}>{t('select')}</button><button className="secondary icon-button" title={t('edit')} onClick={(event)=>{ event.stopPropagation(); editServer(s); }}><Pencil size={16}/></button>{s.id !== 'local' && <button className="danger icon-button" title={t('deleteServer')} onClick={(event)=>{ event.stopPropagation(); deleteServer(s.id); }}><Trash2 size={16}/></button>}</td>
           </tr>{expandedServerId === s.id && renderServerDetails(s, 5)}</React.Fragment>)}
         </tbody></table>
       </section>
