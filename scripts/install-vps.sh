@@ -253,8 +253,8 @@ healthcheck() {
   log "Checking installation"
   sleep 2
   curl -fsS "http://127.0.0.1:$BACKEND_PORT/api/health" >/dev/null || fail "Backend healthcheck failed"
-  docker exec "$BACKEND_CONTAINER" sh -lc 'case "${MOCK_AWG:-false}" in 1|true|yes|on) exit 0;; esac; if [ -n "${AWG_DOCKER_CONTAINER:-}" ]; then command -v docker >/dev/null && test -S /var/run/docker.sock && docker inspect "$AWG_DOCKER_CONTAINER" >/dev/null; fi' \
-    || fail "Backend cannot access Docker. Check backend image docker-cli, /var/run/docker.sock mount, and AWG_DOCKER_CONTAINER."
+  docker exec "$BACKEND_CONTAINER" sh -lc 'case "${MOCK_AWG:-false}" in 1|true|yes|on) exit 0;; esac; command -v docker >/dev/null || { echo "docker CLI is missing in backend container" >&2; exit 1; }; test -S /var/run/docker.sock || { echo "/var/run/docker.sock is not mounted as a socket" >&2; exit 1; }; if [ -n "${AWG_DOCKER_CONTAINER:-}" ]; then docker inspect "$AWG_DOCKER_CONTAINER" >/dev/null || { echo "AWG container is not visible: $AWG_DOCKER_CONTAINER" >&2; exit 1; }; fi' \
+    || fail "Backend cannot access Docker. Rebuild backend image, check /var/run/docker.sock mount, and AWG_DOCKER_CONTAINER."
   if frontend_enabled; then
     curl -fsSI "http://127.0.0.1:$PANEL_HTTP_PORT" >/dev/null || fail "Frontend healthcheck failed"
   fi
