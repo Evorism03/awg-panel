@@ -86,6 +86,15 @@ def awg(args: list[str], input_text: str | None = None) -> str:
         raise HTTPException(status_code=500, detail=f"Command not found: {cmd[0]}")
 
 
+def remove_runtime_peer(public_key: str):
+    if not public_key or MOCK_AWG:
+        return
+    try:
+        awg(["set", AWG_INTERFACE, "peer", public_key, "remove"])
+    except Exception:
+        pass
+
+
 def docker_exec(args: list[str], input_text: str | None = None) -> str:
     try:
         return subprocess.check_output(
@@ -434,6 +443,7 @@ def prune_awg_without_client_table() -> int:
         table_entries = client_table_entries(client_table_load())
         kept_chunks = []
         removed = 0
+        removed_keys = []
         for chunk in chunks:
             if not chunk.strip().startswith("[Peer]"):
                 kept_chunks.append(chunk)
@@ -445,9 +455,13 @@ def prune_awg_without_client_table() -> int:
                 kept_chunks.append(chunk)
                 continue
             removed += 1
+            if public_key:
+                removed_keys.append(public_key)
         if not removed:
             return 0
         write_cfg("\n".join(kept_chunks))
+        for public_key in removed_keys:
+            remove_runtime_peer(public_key)
         reload_service()
         return removed
 
@@ -1437,6 +1451,7 @@ def delete_client_by_key(public_key: str, server_id: str | None = None):
             raise HTTPException(404, "Peer not found")
         if found:
             write_cfg("\n".join(kept))
+            remove_runtime_peer(target)
         if export_existed:
             os.remove(export_path)
         if expired_removed is not None and not removed_name:
