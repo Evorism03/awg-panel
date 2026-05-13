@@ -205,8 +205,6 @@ function App(){
   const [editingClientName,setEditingClientName]=useState('');
   const [expandedClientKey,setExpandedClientKey]=useState('');
   const [expandedServerId,setExpandedServerId]=useState('');
-  const [clientSort,setClientSort]=useState('created_desc');
-  const [selectedClientKeys,setSelectedClientKeys]=useState(()=>new Set());
   const isAggregateServer = activeServerId === 'all';
 
   const handleError=(e)=>{
@@ -364,68 +362,6 @@ function App(){
   const cancelEditClient=()=>{
     setEditingClientKey('');
     setEditingClientName('');
-  };
-  const clientSortValue = (client) => {
-    const created = client?.createdAt ? new Date(`${client.createdAt}T00:00:00`).getTime() : 0;
-    const lastSeen = clientPeerStat(client)?.latest ? clientPeerStat(client).latest * 1000 : 0;
-    return {created, lastSeen, name:(client?.name || '').toLowerCase()};
-  };
-  const sortClients = (list) => {
-    const next = [...list];
-    next.sort((a, b) => {
-      const av = clientSortValue(a);
-      const bv = clientSortValue(b);
-      switch (clientSort) {
-        case 'name_asc': return av.name.localeCompare(bv.name, undefined, {sensitivity:'base'});
-        case 'name_desc': return bv.name.localeCompare(av.name, undefined, {sensitivity:'base'});
-        case 'created_asc': return av.created - bv.created || av.name.localeCompare(bv.name, undefined, {sensitivity:'base'});
-        case 'created_desc': return bv.created - av.created || av.name.localeCompare(bv.name, undefined, {sensitivity:'base'});
-        case 'lastSeen_asc': return av.lastSeen - bv.lastSeen || av.name.localeCompare(bv.name, undefined, {sensitivity:'base'});
-        case 'lastSeen_desc': return bv.lastSeen - av.lastSeen || av.name.localeCompare(bv.name, undefined, {sensitivity:'base'});
-        default: return bv.created - av.created || av.name.localeCompare(bv.name, undefined, {sensitivity:'base'});
-      }
-    });
-    return next;
-  };
-  const allClientRows = [...activeClientsList, ...pendingRenewalClients];
-  const selectedClientCount = selectedClientKeys.size;
-  const allVisibleSelected = allClientRows.length > 0 && allClientRows.every(client=>selectedClientKeys.has(clientRowKey(client)));
-  const someVisibleSelected = allClientRows.some(client=>selectedClientKeys.has(clientRowKey(client)));
-  const syncSelection = (updater) => setSelectedClientKeys(current=>{
-    const next = new Set(current);
-    updater(next);
-    return next;
-  });
-  const toggleClientSelected = (client) => syncSelection(next=>{
-    const key = clientRowKey(client);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-  });
-  const toggleVisibleSelection = () => syncSelection(next=>{
-    if (allVisibleSelected) {
-      allClientRows.forEach(client=>next.delete(clientRowKey(client)));
-      return;
-    }
-    allClientRows.forEach(client=>next.add(clientRowKey(client)));
-  });
-  const clearSelectedClients = () => setSelectedClientKeys(new Set());
-  const deleteSelectedClients = async() => {
-    if (!selectedClientCount) return;
-    if (!confirm(t('deleteClient'))) return;
-    const byKey = new Map(allClientRows.map(client=>[clientRowKey(client), client]));
-    const nextConfigs = {...clientConfigs};
-    for (const key of selectedClientKeys) {
-      const client = byKey.get(key);
-      if (!client) continue;
-      const params = new URLSearchParams({public_key: client.PublicKey});
-      if (client.serverId) params.set('server_id', client.serverId);
-      await api(`/api/clients?${params.toString()}`,{method:'DELETE'});
-      if (nextConfigs[client.PublicKey]) delete nextConfigs[client.PublicKey];
-    }
-    setClientConfigs(nextConfigs);
-    localStorage.setItem('clientConfigs', JSON.stringify(nextConfigs));
-    clearSelectedClients();
-    await load().catch(handleError);
   };
   const renameClient=async(client)=>{
     const nextName = editingClientName.trim();
@@ -772,32 +708,10 @@ function App(){
         <pre>{selectedConfig}</pre>
       </section>}
 
-      <section className="clients-toolbar">
-        <div className="clients-toolbar-left">
-          <label className="toolbar-field">
-            <span>{t('sortBy')}</span>
-            <select value={clientSort} onChange={e=>setClientSort(e.target.value)}>
-              <option value="created_desc">{t('sortCreatedDesc')}</option>
-              <option value="created_asc">{t('sortCreatedAsc')}</option>
-              <option value="lastSeen_desc">{t('sortLastSeenDesc')}</option>
-              <option value="lastSeen_asc">{t('sortLastSeenAsc')}</option>
-              <option value="name_asc">{t('sortNameAsc')}</option>
-              <option value="name_desc">{t('sortNameDesc')}</option>
-            </select>
-          </label>
-          <div className="selection-hint">{t('selectedClients')}: {selectedClientCount}</div>
-        </div>
-        <div className="clients-toolbar-actions">
-          <button className="secondary" onClick={toggleVisibleSelection}>{allVisibleSelected ? t('clearSelection') : t('selectAll')}</button>
-          <button className="danger" onClick={()=>deleteSelectedClients().catch(handleError)} disabled={!selectedClientCount}>{t('deleteSelected')}</button>
-        </div>
-      </section>
-
       <section className="card">
         <div className="panel-head"><div><h2>{t('activeClients')}</h2><p>{t('activeClientsSub')}</p></div><span className="badge ok">{activeClientsList.length}</span></div>
-        <table className="client-table active-client-table"><thead><tr><th className="select-col"><input type="checkbox" className="row-select" checked={allVisibleSelected} ref={el=>{ if(el) el.indeterminate = someVisibleSelected && !allVisibleSelected; }} onChange={toggleVisibleSelection} aria-label={t('selectAll')} /></th><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('createdOnly')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {sortClients(activeClientsList).map(c=>{ const key = clientRowKey(c); const status = clientStatus(c); const selected = selectedClientKeys.has(key); return <React.Fragment key={key}><tr className={`clickable-row ${selected ? 'selected-row' : ''} ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
-            <td className="select-col" onClick={event=>event.stopPropagation()}><input type="checkbox" className="row-select" checked={selected} onChange={()=>toggleClientSelected(c)} aria-label={t('selectAll')} /></td>
+        <table className="client-table active-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('createdOnly')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+          {activeClientsList.map(c=>{ const key = clientRowKey(c); const status = clientStatus(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className={`badge ${status.className}`}>{status.label}</span></td>
@@ -806,15 +720,14 @@ function App(){
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
-          </tr>{expandedClientKey === key && renderClientDetails(c, 9)}</React.Fragment> })}
+          </tr>{expandedClientKey === key && renderClientDetails(c, 8)}</React.Fragment> })}
         </tbody></table>
       </section>
 
       {pendingRenewalClients.length > 0 && <section className="card">
         <div className="panel-head"><div><h2>{t('expiredClients')}</h2><p>{t('expiredClientsSub')}</p></div><span className="badge expired">{pendingRenewalClients.length}</span></div>
-        <table className="client-table expired-client-table"><thead><tr><th className="select-col"><input type="checkbox" className="row-select" checked={allVisibleSelected} ref={el=>{ if(el) el.indeterminate = someVisibleSelected && !allVisibleSelected; }} onChange={toggleVisibleSelection} aria-label={t('selectAll')} /></th><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('createdOnly')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {sortClients(pendingRenewalClients).map(c=>{ const key = clientRowKey(c); const selected = selectedClientKeys.has(key); return <React.Fragment key={key}><tr className={`clickable-row ${selected ? 'selected-row' : ''} ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
-            <td className="select-col" onClick={event=>event.stopPropagation()}><input type="checkbox" className="row-select" checked={selected} onChange={()=>toggleClientSelected(c)} aria-label={t('selectAll')} /></td>
+        <table className="client-table expired-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('createdOnly')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+          {pendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
@@ -824,7 +737,7 @@ function App(){
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
-          </tr>{expandedClientKey === key && renderClientDetails(c, 10)}</React.Fragment>})}
+          </tr>{expandedClientKey === key && renderClientDetails(c, 9)}</React.Fragment>})}
         </tbody></table>
       </section>}
     </>}
@@ -835,9 +748,8 @@ function App(){
         <span className="badge expired">{pendingRenewalClients.length}</span>
       </section>
       <section className="card">
-        <table className="client-table expired-client-table"><thead><tr><th className="select-col"><button type="button" className={`row-select-toggle ${allVisibleSelected ? 'selected' : someVisibleSelected ? 'partial' : ''}`} onClick={toggleVisibleSelection} aria-label={t('selectAll')}/></th><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('createdOnly')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {sortClients(pendingRenewalClients).map(c=>{ const key = clientRowKey(c); const selected = selectedClientKeys.has(key); return <React.Fragment key={key}><tr className={`clickable-row ${selected ? 'selected-row' : ''} ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
-            <td className="select-col" onClick={event=>event.stopPropagation()}><button type="button" className={`row-select-toggle ${selected ? 'selected' : ''}`} onClick={()=>toggleClientSelected(c)} aria-label={t('selectAll')}/></td>
+        <table className="client-table expired-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('createdOnly')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+          {pendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''}`} onClick={()=>setExpandedClientKey(expandedClientKey === key ? '' : key)}>
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
@@ -847,7 +759,7 @@ function App(){
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
-          </tr>{expandedClientKey === key && renderClientDetails(c, 10)}</React.Fragment>})}
+          </tr>{expandedClientKey === key && renderClientDetails(c, 9)}</React.Fragment>})}
         </tbody></table>
       </section>
     </>}
