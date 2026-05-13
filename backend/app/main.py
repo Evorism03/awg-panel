@@ -566,10 +566,51 @@ def safe_name(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_.-]+", "_", value.strip())
 
 
-CLIENT_TABLE_PUBLIC_KEY_FIELDS = ["PublicKey", "publicKey", "public_key", "clientPublicKey"]
-CLIENT_TABLE_NAME_FIELDS = ["name", "clientName", "Name", "username", "userName", "description", "Description"]
-CLIENT_TABLE_ADDRESS_FIELDS = ["AllowedIPs", "allowedIps", "address", "Address", "ip", "clientIp"]
-CLIENT_TABLE_CREATED_FIELDS = ["createdAt", "created_at", "created", "creationDate", "createdDate", "dateCreated"]
+CLIENT_TABLE_OUTER_KEY_FIELD = "__awgPanelTableKey"
+CLIENT_TABLE_PUBLIC_KEY_FIELDS = [
+    "PublicKey",
+    "publicKey",
+    "public_key",
+    "clientPublicKey",
+    "client_public_key",
+]
+CLIENT_TABLE_NAME_FIELDS = [
+    "name",
+    "clientName",
+    "client_name",
+    "displayName",
+    "display_name",
+    "Name",
+    "username",
+    "userName",
+    "description",
+    "Description",
+    "comment",
+    "label",
+    "title",
+]
+CLIENT_TABLE_ADDRESS_FIELDS = [
+    "AllowedIPs",
+    "allowedIPs",
+    "allowedIps",
+    "allowed_ips",
+    "address",
+    "Address",
+    "clientAddress",
+    "client_address",
+    "ip",
+    "clientIp",
+]
+CLIENT_TABLE_CREATED_FIELDS = [
+    "createdAt",
+    "created_at",
+    "created",
+    "creationDate",
+    "creation_date",
+    "createdDate",
+    "dateCreated",
+    "timestamp",
+]
 
 
 def client_table_load():
@@ -600,7 +641,14 @@ def client_table_entries(data):
             return data["clients"]
         if isinstance(data.get("data"), list):
             return data["data"]
-        return [value for value in data.values() if isinstance(value, dict)]
+        entries = []
+        for key, value in data.items():
+            if not isinstance(value, dict):
+                continue
+            entry = dict(value)
+            entry.setdefault(CLIENT_TABLE_OUTER_KEY_FIELD, str(key))
+            entries.append(entry)
+        return entries
     return []
 
 
@@ -637,7 +685,7 @@ def apply_client_table_names(clients: list[dict]) -> list[dict]:
                 continue
             if not entry_public_key and not client_table_address_matches(entry, allowed_ips):
                 continue
-            name = client_table_value(entry, CLIENT_TABLE_NAME_FIELDS)
+            name = client_table_value(entry, CLIENT_TABLE_NAME_FIELDS) or entry.get(CLIENT_TABLE_OUTER_KEY_FIELD, "").strip()
             if name:
                 client["name"] = name
             created_at = client_table_value(entry, CLIENT_TABLE_CREATED_FIELDS)
