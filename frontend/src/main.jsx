@@ -1033,7 +1033,6 @@ function App(){
           <div><span>{t('createdClients')}</span><strong>{stats.created}</strong></div>
           <div><span>{t('received')}</span><strong>{formatMb(stats.rx)}</strong></div>
           <div><span>{t('sent')}</span><strong>{formatMb(stats.tx)}</strong></div>
-          <div><span>{t('limit')}</span><strong>{stats.maxUsers > 0 ? stats.maxUsers : '—'}</strong></div>
           <div><span>{t('status')}</span><strong>{serverConnection(server) ? t('active') : t('inactiveEdit')}</strong></div>
         </div>
         <div className="detail-key mono">{server.kind === 'local' || server.id === 'all' ? server.name : server.baseUrl}</div>
@@ -1294,8 +1293,7 @@ function App(){
             <td>{o.email||'—'}</td>
             <td><span className="badge admin">{o.term}</span></td>
             <td>
-              <span className={`badge ${orderStatusClass(o.status)}`}>{t(normalizedStatus)}</span>
-              <select value={normalizedStatus} onChange={e=>updateOrder(o.id,e.target.value)} aria-label={t('status')}>
+              <select className={`order-status-select order-status-${normalizedStatus}`} value={normalizedStatus} onChange={e=>updateOrder(o.id,e.target.value)} aria-label={t('status')}>
                 {orderStatuses.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
               </select>
             </td>
@@ -1334,27 +1332,23 @@ function App(){
         <button onClick={()=>addServer().catch(handleError)}><Plus size={16}/>{t('saveServer')}</button>
       </section>}
       <section className="card">
-        <table className="server-table"><thead><tr><th>{t('title')}</th><th>{t('endpoint')}</th><th>{t('token')}</th><th>{t('status')}</th><th>{t('activeClients')}</th><th>{t('limit')}</th><th></th></tr></thead><tbody>
+        <table className="server-table"><thead><tr><th>{t('title')}</th><th>{t('endpoint')}</th><th>{t('token')}</th><th>{t('status')}</th><th>{t('activeClients')}</th><th></th></tr></thead><tbody>
           {(()=>{ const server = {id:'all', name:t('allServers'), baseUrl:'', kind:'aggregate', status:'online'}; return <React.Fragment key="all"><tr className={`clickable-row ${activeServerId==='all'?'selected-row':''} ${expandedServerId === 'all' ? 'expanded' : ''}`} onClick={()=>setExpandedServerId(expandedServerId === 'all' ? '' : 'all')}>
             <td><strong>{t('allServers')}</strong>{activeServerId==='all' && <small>{t('activeServer')}</small>}</td>
             <td className="mono">—</td>
             <td><span className="badge ok">{t('set')}</span></td>
             <td><span className="badge ok">{t('active')}</span></td>
             <td><span className={`badge ${serverUsageClass(server)}`}>{serverUsageText(server)}</span></td>
-            <td className="mono">—</td>
             <td className="table-actions"><button className="secondary icon-button" title={t('details')} onClick={(event)=>{ event.stopPropagation(); setExpandedServerId(expandedServerId === 'all' ? '' : 'all'); }}><ChevronDown className={expandedServerId === 'all' ? 'rotated' : ''} size={16}/></button><button className="secondary" onClick={(event)=>{ event.stopPropagation(); selectServer('all'); }}>{t('select')}</button></td>
-          </tr>{expandedServerId === 'all' && renderServerDetails(server, 7)}</React.Fragment>; })()}
+          </tr>{expandedServerId === 'all' && renderServerDetails(server, 6)}</React.Fragment>; })()}
           {servers.map(s=><React.Fragment key={s.id}><tr className={`clickable-row ${s.id===activeServerId?'selected-row':''} ${expandedServerId === s.id ? 'expanded' : ''}`} onClick={()=>setExpandedServerId(expandedServerId === s.id ? '' : s.id)}>
             <td><strong>{s.name}</strong>{s.id===activeServerId && <small>{t('activeServer')}</small>}</td>
             <td className="mono">{s.kind === 'local' ? t('localServer') : s.baseUrl}</td>
             <td>{s.kind === 'local' ? <span className="badge ok">{t('set')}</span> : (s.token ? <span className="badge ok">{t('set')}</span> : <span className="badge muted">{t('notSet')}</span>)}</td>
             <td>{serverConnection(s)?<span className="badge ok">{t('active')}</span>:<span className="badge warn">{t('inactiveEdit')}</span>}</td>
             <td><span className={`badge ${serverUsageClass(s)}`}>{serverUsageText(s)}</span></td>
-            <td>
-              {s.id === 'all' ? '—' : <input className="server-limit-input" type="number" min="0" inputMode="numeric" value={serverLimitValue(s)} onChange={e=>setServerLimitDrafts(current=>({...current, [s.id]: e.target.value}))} onBlur={e=>saveServerLimit(s, e.target.value).catch(handleError)} onKeyDown={e=>{ if (e.key === 'Enter') e.currentTarget.blur(); }} />}
-            </td>
             <td className="table-actions"><button className="secondary icon-button" title={t('details')} onClick={(event)=>{ event.stopPropagation(); setExpandedServerId(expandedServerId === s.id ? '' : s.id); }}><ChevronDown className={expandedServerId === s.id ? 'rotated' : ''} size={16}/></button><button className="secondary" onClick={(event)=>{ event.stopPropagation(); selectServer(s.id); }}>{t('select')}</button><button className="secondary icon-button" title={t('edit')} onClick={(event)=>{ event.stopPropagation(); editServer(s); }}><Pencil size={16}/></button>{s.id !== 'local' && <button className="danger icon-button" title={t('deleteServer')} onClick={(event)=>{ event.stopPropagation(); deleteServer(s.id); }}><Trash2 size={16}/></button>}</td>
-          </tr>{expandedServerId === s.id && renderServerDetails(s, 7)}</React.Fragment>)}
+          </tr>{expandedServerId === s.id && renderServerDetails(s, 6)}</React.Fragment>)}
         </tbody></table>
       </section>
       <section className="card"><h2>{t('dumpTitle')}</h2><pre>{dump||t('noDump')}</pre></section>
