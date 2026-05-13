@@ -5,7 +5,7 @@ import base64, configparser, ipaddress, json, os, re, secrets, shutil, subproces
 from datetime import date, timedelta
 import urllib.request
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from .config import *
 
 app = FastAPI(title="AmneziaWG Admin")
@@ -17,6 +17,9 @@ class ClientCreate(BaseModel):
 class ClientImport(BaseModel):
     name: str = ""
     config: str
+
+class ClientUpdate(BaseModel):
+    name: str
 
 class LoginRequest(BaseModel):
     username: str
@@ -278,8 +281,9 @@ def list_servers(include_local: bool = True) -> list[dict]:
 
 
 def local_clients_payload() -> dict:
-    expired_clients = attach_client_source(enforce_expired_clients(), LOCAL_SERVER_ID, LOCAL_SERVER_NAME)
-    peers = attach_client_source(parse_peers(read_cfg()), LOCAL_SERVER_ID, LOCAL_SERVER_NAME)
+    local_name = local_server_identity()["name"]
+    expired_clients = attach_client_source(enforce_expired_clients(), LOCAL_SERVER_ID, local_name)
+    peers = attach_client_source(parse_peers(read_cfg()), LOCAL_SERVER_ID, local_name)
     for peer in peers:
         peer["blocked"] = False
         peer["status"] = "active"
@@ -293,7 +297,7 @@ def local_clients_payload() -> dict:
         "expiredClientsPath": expired_clients_path(),
         "dump": dump,
         "serverId": LOCAL_SERVER_ID,
-        "serverName": LOCAL_SERVER_NAME,
+        "serverName": local_name,
     }
 
 
@@ -315,7 +319,7 @@ def aggregate_clients_payload() -> dict:
     local_payload = local_clients_payload()
     merged_clients.extend(local_payload.get("clients", []))
     if local_payload.get("dump"):
-        merged_dumps.append(f"# {LOCAL_SERVER_NAME}\n{local_payload['dump']}")
+        merged_dumps.append(f"# {local_payload.get('serverName') or LOCAL_SERVER_NAME}\n{local_payload['dump']}")
     for server in load_servers():
         try:
             payload = remote_clients_payload(server)
@@ -569,6 +573,42 @@ def load_client_export(public_key: str) -> str | None:
     return None
 
 
+def rename_stored_client_export(public_key: str, old_name: str, new_name: str):
+    export_path = client_export_path(public_key)
+    cfg = load_client_export(public_key)
+    if cfg is None:
+        return
+    new_named_path = f"{CLIENTS_DIR}/{safe_name(new_name)}.conf"
+    if new_named_path != export_path:
+        with open(new_named_path, "w", encoding="utf-8") as f:
+            f.write(cfg)
+    old_named_path = f"{CLIENTS_DIR}/{safe_name(old_name)}.conf" if old_name else ""
+    if old_named_path and old_named_path not in {export_path, new_named_path} and os.path.exists(old_named_path):
+        os.remove(old_named_path)
+
+
+def rename_peer_block(text: str, public_key: str, new_name: str) -> tuple[str, str] | None:
+    chunks = re.split(r"\n(?=\[Peer\])", text)
+    next_chunks = []
+    old_name = ""
+    found = False
+    for chunk in chunks:
+        peer = peer_from_block(chunk) if chunk.strip().startswith("[Peer]") else {}
+        if peer.get("PublicKey", "").strip() != public_key:
+            next_chunks.append(chunk)
+            continue
+        old_name = peer.get("name", "")
+        if re.search(r"(?m)^#\s*Name:\s*.*$", chunk):
+            chunk = re.sub(r"(?m)^#\s*Name:\s*.*$", f"# Name: {new_name}", chunk, count=1)
+        else:
+            chunk = re.sub(r"(?m)^\[Peer\]\s*$", f"[Peer]\n# Name: {new_name}", chunk, count=1)
+        next_chunks.append(chunk)
+        found = True
+    if not found:
+        return None
+    return "\n".join(next_chunks), old_name
+
+
 def reload_service():
     if MOCK_AWG or not RELOAD_COMMAND:
         return
@@ -777,17 +817,10 @@ def import_client(
         "configUrl": f"/api/client-config?public_key={public_key}",
     }
 
-@app.delete("/api/clients/{public_key}")
-def delete_client(
-    public_key: str,
-    authorization: str | None = Header(None),
-    awg_panel_session: str | None = Cookie(None),
-    server_id: str | None = Query(None),
-):
-    auth(authorization, awg_panel_session)
+def delete_client_by_key(public_key: str, server_id: str | None = None):
     server = get_server(server_id)
     if server is not None:
-        return panel_json(server, "DELETE", f"/clients/{public_key.strip()}")
+        return panel_json(server, "DELETE", f"/clients?public_key={quote(public_key.strip(), safe='')}")
     expired = load_expired_clients()
     expired_removed = expired.pop(public_key.strip(), None)
     if expired_removed is not None:
@@ -811,13 +844,16 @@ def delete_client(
                 removed_name = removed_name.group(1).strip() if removed_name else ""
                 continue
         kept.append(ch)
-    if not found and expired_removed is None:
+    export_path = client_export_path(target)
+    export_existed = os.path.exists(export_path)
+    if not found and expired_removed is None and not export_existed:
         raise HTTPException(404, "Peer not found")
     if found:
         write_cfg("\n".join(kept))
-    export_path = client_export_path(target)
-    if os.path.exists(export_path):
+    if export_existed:
         os.remove(export_path)
+    if expired_removed is not None and not removed_name:
+        removed_name = expired_removed.get("name", "")
     if removed_name:
         named_path = f"{CLIENTS_DIR}/{safe_name(removed_name)}.conf"
         if named_path != export_path and os.path.exists(named_path):
@@ -825,6 +861,77 @@ def delete_client(
     if found:
         reload_service()
     return {"ok": True}
+
+
+@app.delete("/api/clients")
+def delete_client_query(
+    public_key: str = Query(...),
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    return delete_client_by_key(public_key, server_id)
+
+
+@app.delete("/api/clients/{public_key}")
+def delete_client(
+    public_key: str,
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    return delete_client_by_key(public_key, server_id)
+
+
+def update_client_by_key(public_key: str, body: ClientUpdate, server_id: str | None = None):
+    server = get_server(server_id)
+    if server is not None:
+        return panel_json(server, "PATCH", f"/clients?public_key={quote(public_key.strip(), safe='')}", payload=body.model_dump())
+    new_name = body.name.strip()
+    if not new_name:
+        raise HTTPException(400, "Client name is required")
+    target = public_key.strip()
+    expired = load_expired_clients()
+    if target in expired:
+        old_name = expired[target].get("name", "")
+        expired[target]["name"] = new_name
+        save_expired_clients(expired)
+        rename_stored_client_export(target, old_name, new_name)
+        return {"ok": True, "publicKey": target, "name": new_name}
+    result = rename_peer_block(read_cfg(), target, new_name)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    next_text, old_name = result
+    write_cfg(next_text)
+    rename_stored_client_export(target, old_name, new_name)
+    reload_service()
+    return {"ok": True, "publicKey": target, "name": new_name}
+
+
+@app.patch("/api/clients")
+def update_client_query(
+    body: ClientUpdate,
+    public_key: str = Query(...),
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    return update_client_by_key(public_key, body, server_id)
+
+
+@app.patch("/api/clients/{public_key}")
+def update_client(
+    public_key: str,
+    body: ClientUpdate,
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    return update_client_by_key(public_key, body, server_id)
 
 @app.get("/api/client-config")
 def client_config_export(

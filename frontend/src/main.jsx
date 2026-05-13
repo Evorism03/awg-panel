@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Activity, CheckCircle2, Clock3, CreditCard, Download, Home, LogOut, Plus, RefreshCw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX} from 'lucide-react';
+import {Activity, Check, CheckCircle2, Clock3, CreditCard, Download, Home, LogOut, Pencil, Plus, RefreshCw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
 import './style.css';
 
 const api = async (path, options={}) => {
@@ -30,7 +30,7 @@ const dict = {
   ru: {
     today:'Сегодня', admin:'Админ', oneDay:'1 день', threeDays:'3 дня', sevenDays:'7 дней', fifteenDays:'15 дней', oneMonth:'1 месяц', threeMonths:'3 месяца', sixMonths:'6 месяцев', oneYear:'1 год',
     online:'Онлайн', offline:'Оффлайн', recent:'Недавно', renewalPending:'Ожидает продления', checking:'Проверка сессии', signInTitle:'Вход в панель управления', login:'Логин', password:'Пароль', signIn:'Войти',
-    noServer:'Сервер не выбран', noEndpoint:'endpoint не задан', refresh:'Обновить', refreshing:'Обновление', logout:'Выйти', home:'Главная', clients:'Клиенты', expired:'Просроченные', orders:'Заказы', servers:'Серверы', localServer:'Локальный сервер', allServers:'Все серверы',
+    noServer:'Сервер не выбран', noEndpoint:'endpoint не задан', refresh:'Обновить', refreshing:'Обновление', logout:'Выйти', home:'Главная', clients:'Клиенты', expired:'Просроченные', orders:'Заказы', servers:'Серверы', localServer:'Локальный сервер', allServers:'Все серверы', editName:'Редактировать имя', save:'Сохранить', cancel:'Отмена',
     totalClients:'Всего клиентов', activeClients:'Активные клиенты', expiredClients:'Просроченные клиенты', serversActive:'Серверы / активные', activeUsers:'Активные пользователи', maxOnline:'Максимум онлайн-клиентов по дням', now:'Сейчас',
     traffic:'Трафик', rx:'Прием данных', tx:'Отдача данных', peersDump:'Peers в dump', clientsSub:'Создание, выдача и скачивание конфигов для выбранного сервера',
     importConf:'Импорт .conf', createClient:'Создать клиента', importTitle:'Импорт Amnezia-конфига', close:'Закрыть', clientName:'Имя клиента', readyConf:'Готовый .conf',
@@ -47,7 +47,7 @@ const dict = {
   en: {
     today:'Today', admin:'Admin', oneDay:'1 day', threeDays:'3 days', sevenDays:'7 days', fifteenDays:'15 days', oneMonth:'1 month', threeMonths:'3 months', sixMonths:'6 months', oneYear:'1 year',
     online:'Online', offline:'Offline', recent:'Recent', renewalPending:'Awaiting renewal', checking:'Checking session', signInTitle:'Admin panel sign in', login:'Login', password:'Password', signIn:'Sign in',
-    noServer:'No server selected', noEndpoint:'endpoint not set', refresh:'Refresh', refreshing:'Refreshing', logout:'Log out', home:'Home', clients:'Clients', expired:'Expired', orders:'Orders', servers:'Servers', localServer:'Local server', allServers:'All servers',
+    noServer:'No server selected', noEndpoint:'endpoint not set', refresh:'Refresh', refreshing:'Refreshing', logout:'Log out', home:'Home', clients:'Clients', expired:'Expired', orders:'Orders', servers:'Servers', localServer:'Local server', allServers:'All servers', editName:'Edit name', save:'Save', cancel:'Cancel',
     totalClients:'Total clients', activeClients:'Active clients', expiredClients:'Expired clients', serversActive:'Servers / active', activeUsers:'Active users', maxOnline:'Max online clients by day', now:'Now',
     traffic:'Traffic', rx:'Received', tx:'Sent', peersDump:'Peers in dump', clientsSub:'Create, issue, and download configs for the selected server',
     importConf:'Import .conf', createClient:'Create client', importTitle:'Import Amnezia config', close:'Close', clientName:'Client name', readyConf:'Ready .conf',
@@ -176,6 +176,8 @@ function App(){
   const [activityHistory,setActivityHistory]=useState(()=>JSON.parse(localStorage.getItem('dailyActivityHistory')||'[]'));
   const [lastConfig,setLastConfig]=useState('');
   const [error,setError]=useState('');
+  const [editingClientKey,setEditingClientKey]=useState('');
+  const [editingClientName,setEditingClientName]=useState('');
   const isAggregateServer = activeServerId === 'all';
 
   const handleError=(e)=>{
@@ -302,8 +304,9 @@ function App(){
   const remove=async(pk, serverId=activeServerId)=>{
     if(!confirm(t('deleteClient'))) return;
     const savedConfig = clientConfigs[pk];
-    const query = serverId ? `?server_id=${encodeURIComponent(serverId)}` : '';
-    await api('/api/clients/'+encodeURIComponent(pk)+query,{method:'DELETE'});
+    const params = new URLSearchParams({public_key: pk});
+    if (serverId) params.set('server_id', serverId);
+    await api(`/api/clients?${params.toString()}`,{method:'DELETE'});
     if (savedConfig) {
       const next = {...clientConfigs};
       delete next[pk];
@@ -313,6 +316,25 @@ function App(){
         closeIssuedConfig();
       }
     }
+    await load();
+  };
+  const clientRowKey=(client)=>`${client.serverId || 'local'}:${client.PublicKey}`;
+  const beginEditClient=(client)=>{
+    setEditingClientKey(clientRowKey(client));
+    setEditingClientName(client.name || '');
+  };
+  const cancelEditClient=()=>{
+    setEditingClientKey('');
+    setEditingClientName('');
+  };
+  const renameClient=async(client)=>{
+    const nextName = editingClientName.trim();
+    if(!nextName) return;
+    const serverId = client.serverId || activeServerId;
+    const params = new URLSearchParams({public_key: client.PublicKey});
+    if (serverId) params.set('server_id', serverId);
+    await api(`/api/clients?${params.toString()}`,{method:'PATCH',body:JSON.stringify({name:nextName})});
+    cancelEditClient();
     await load();
   };
   const downloadConfig=(config, filename='amneziawg-client.conf')=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([config],{type:'text/plain'})); a.download=filename; a.click(); };
@@ -463,6 +485,20 @@ function App(){
     if(age < 900) return {label:t('recent'), className:'warn'};
     return {label:t('offline'), className:'muted'};
   };
+  const renderClientName=(client)=>{
+    const key = clientRowKey(client);
+    if (editingClientKey === key) {
+      return <div className="inline-edit">
+        <input value={editingClientName} onChange={e=>setEditingClientName(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') renameClient(client).catch(handleError); if(e.key==='Escape') cancelEditClient(); }} autoFocus />
+        <button className="secondary icon-button" title={t('save')} onClick={()=>renameClient(client).catch(handleError)}><Check size={16}/></button>
+        <button className="secondary icon-button" title={t('cancel')} onClick={cancelEditClient}><X size={16}/></button>
+      </div>;
+    }
+    return <div className="client-name-cell">
+      <span>{client.name||'—'}</span>
+      <button className="secondary icon-button" title={t('editName')} onClick={()=>beginEditClient(client)}><Pencil size={15}/></button>
+    </div>;
+  };
 
   if(checkingSession) return <main className="auth-page"><section className="card login-card"><h1>AmneziaWG Admin</h1><p>{t('checking')}</p></section></main>;
 
@@ -569,8 +605,8 @@ function App(){
       <section className="card">
         <div className="panel-head"><div><h2>{t('activeClients')}</h2><p>{t('activeClientsSub')}</p></div><span className="badge ok">{activeClientsList.length}</span></div>
         <table><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {activeClientsList.map(c=>{ const status = clientStatus(c); return <tr key={`${c.serverId || 'local'}:${c.PublicKey}`}>
-            <td>{c.name||'—'}</td>
+          {activeClientsList.map(c=>{ const status = clientStatus(c); return <tr key={clientRowKey(c)}>
+            <td>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className={`badge ${status.className}`}>{status.label}</span></td>
             <td>{c.expiresAt ? <span className={`badge ${isExpired(c.expiresAt) ? 'expired' : 'muted'}`}>{formatDate(c.expiresAt, lang)}</span> : <span className="badge admin">{t('admin')}</span>}</td>
@@ -588,8 +624,8 @@ function App(){
       {pendingRenewalClients.length > 0 && <section className="card">
         <div className="panel-head"><div><h2>{t('expiredClients')}</h2><p>{t('expiredClientsSub')}</p></div><span className="badge expired">{pendingRenewalClients.length}</span></div>
         <table><thead><tr><th>{t('name')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {pendingRenewalClients.map(c=><tr key={`${c.serverId || 'local'}:${c.PublicKey}`}>
-            <td>{c.name||'—'}</td>
+          {pendingRenewalClients.map(c=><tr key={clientRowKey(c)}>
+            <td>{renderClientName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
             <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>
             <td>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
@@ -612,8 +648,8 @@ function App(){
       </section>
       <section className="card">
         <table><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
-          {pendingRenewalClients.map(c=><tr key={`${c.serverId || 'local'}:${c.PublicKey}`}>
-            <td>{c.name||'—'}</td>
+          {pendingRenewalClients.map(c=><tr key={clientRowKey(c)}>
+            <td>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
             <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>

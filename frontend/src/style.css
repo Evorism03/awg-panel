@@ -84,6 +84,10 @@ main{max-width:1180px;margin:0 auto;padding:28px}
 .server-form-grid label,.client-form-grid label{margin:0}
 .server-table .selected-row{background:#1b2641}
 .table-actions{display:flex;gap:8px;justify-content:flex-end}
+.client-name-cell,.inline-edit{display:flex;align-items:center;gap:8px;min-width:180px}
+.client-name-cell span{min-width:0;word-break:break-word}
+.inline-edit input{min-width:140px;padding:9px 10px}
+.icon-button{min-height:34px;width:34px;padding:0}
 .badge{display:inline-flex;align-items:center;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800;letter-spacing:0}
 .badge.ok{background:#123b28;color:#bbf7d0}
 .badge.muted{background:#2f3b52;color:#d4deef}
