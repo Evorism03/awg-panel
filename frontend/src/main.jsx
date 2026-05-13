@@ -1,4 +1,4 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {Activity, ArrowDown, ArrowUp, ArrowUpDown, Check, CheckCircle2, ChevronDown, Clipboard, Clock3, CreditCard, Download, Home, LogOut, Pencil, Plus, RefreshCw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
 import './style.css';
@@ -160,7 +160,10 @@ function ActivityChart({points, lang}) {
   const linePath = smoothPath(visibleCoords);
   const areaPath = `${linePath} L ${lastVisible.x} 170 L 0 170 Z`;
   return <svg className="chart" viewBox={`0 0 ${width} ${height}`} role="img">
-    <defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#6377ff" stopOpacity=".55"/><stop offset="100%" stopColor="#6377ff" stopOpacity="0"/></linearGradient></defs>
+    <defs>
+      <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#6377ff" stopOpacity=".45"/><stop offset="100%" stopColor="#6377ff" stopOpacity="0"/></linearGradient>
+      <linearGradient id="chartStroke" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#8fa0ff"/><stop offset="100%" stopColor="#6be9a8"/></linearGradient>
+    </defs>
     <polyline className="chart-grid" points={`0,170 ${width},170`} />
     <path className="chart-area" d={areaPath} fill="url(#chartFill)" />
     <path className="chart-line" d={linePath} />
@@ -252,7 +255,7 @@ function App(){
     document.title = isAdminRoute ? t('appName') : `${t('appName')} · ${t('purchase')}`;
   },[isAdminRoute, lang]);
 
-  const handleError=(e)=>{
+  const handleError=useCallback((e)=>{
     const message = e.message === 'Unauthorized' ? t('wrongAuth') : e.message;
     setError(message);
     if (e.message === 'Unauthorized') {
@@ -262,7 +265,8 @@ function App(){
       setAllServerClients([]);
       setAllServerDump('');
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[lang]);
 
   const loadServers=async()=>{
     const r=await api('/api/servers');
@@ -671,10 +675,10 @@ function App(){
     return servers.find(server=>server.id===serverId)?.name || serverId || '—';
   };
   const clientServerName = (client)=>client.serverName || serverNameById(client.serverId);
-  const activeClientsList = clients.filter(client=>!client.blocked);
-  const pendingRenewalClients = clients.filter(client=>client.blocked || ['not_renewed','renewal_pending'].includes(client.status));
-  const peerStats = parsePeerStats(dump);
-  const peerStatsByKey = Object.fromEntries(peerStats.map(peer=>[peer.publicKey, peer]));
+  const activeClientsList = useMemo(() => clients.filter(c=>!c.blocked), [clients]);
+  const pendingRenewalClients = useMemo(() => clients.filter(c=>c.blocked || ['not_renewed','renewal_pending'].includes(c.status)), [clients]);
+  const peerStats = useMemo(() => parsePeerStats(dump), [dump]);
+  const peerStatsByKey = useMemo(() => Object.fromEntries(peerStats.map(p=>[p.publicKey, p])), [peerStats]);
   const allServerStatsClients = allServerClients.length ? allServerClients : clients;
   const allServerPeerStats = parsePeerStats(allServerDump || dump);
   const nowSeconds = Math.floor(Date.now() / 1000);
@@ -721,9 +725,15 @@ function App(){
 
   useEffect(()=>{
     if(!isAdminRoute || !isLoggedIn) return;
-    const timer = setInterval(()=>load().catch(handleError), 10000);
+    const timer = setInterval(()=>loadClients(activeServerId).catch(handleError), 10000);
     return ()=>clearInterval(timer);
-  },[isAdminRoute, isLoggedIn, activeServerId, view]);
+  },[isAdminRoute, isLoggedIn, activeServerId]);
+
+  useEffect(()=>{
+    if(!isAdminRoute || !isLoggedIn) return;
+    const timer = setInterval(()=>loadServers().catch(handleError), 30000);
+    return ()=>clearInterval(timer);
+  },[isAdminRoute, isLoggedIn]);
 
   useEffect(()=>{
     if(!isAdminRoute || !isLoggedIn || view !== 'server') return;
@@ -909,8 +919,10 @@ function App(){
     if (clientSortField !== field) return <ArrowUpDown size={14} />;
     return clientSortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />;
   };
-  const sortedActiveClients = sortClients(activeClientsList);
-  const sortedPendingRenewalClients = sortClients(pendingRenewalClients);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const sortedActiveClients = useMemo(() => sortClients(activeClientsList), [activeClientsList, clientSortField, clientSortDir, peerStatsByKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const sortedPendingRenewalClients = useMemo(() => sortClients(pendingRenewalClients), [pendingRenewalClients, clientSortField, clientSortDir, peerStatsByKey]);
   const serverStats = (server)=>{
     const serverClients = server.id === 'all' ? allServerStatsClients : allServerStatsClients.filter(client=>(client.serverId || 'local') === server.id);
     const active = serverClients.filter(client=>!client.blocked).length;

@@ -1,7 +1,9 @@
 from fastapi import Cookie, FastAPI, HTTPException, Header, Response
 from fastapi import Query
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 import base64, configparser, ipaddress, json, os, re, secrets, shutil, subprocess, time
+from concurrent.futures import ThreadPoolExecutor
 from threading import RLock
 from datetime import date, datetime, timedelta
 import urllib.request
@@ -10,6 +12,7 @@ from urllib.parse import quote, urlparse
 from .config import *
 
 app = FastAPI(title="AmneziaWG Admin")
+app.add_middleware(GZipMiddleware, minimum_size=512)
 data_lock = RLock()
 
 class ClientCreate(BaseModel):
@@ -327,9 +330,17 @@ def list_servers(include_local: bool = True) -> list[dict]:
     result = []
     if include_local:
         result.append(local_server_identity())
-    for server in load_servers():
+    remote_servers = load_servers()
+    if not remote_servers:
+        return result
+    with ThreadPoolExecutor(max_workers=min(8, len(remote_servers))) as pool:
+        probes = [(server, pool.submit(probe_panel, server)) for server in remote_servers]
+    for server, future in probes:
         item = server_identity(server)
-        item["status"] = probe_panel(server)
+        try:
+            item["status"] = future.result()
+        except Exception:
+            item["status"] = "offline"
         item["kind"] = "remote"
         result.append(item)
     return result
