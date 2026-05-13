@@ -744,7 +744,14 @@ function App(){
 
   useEffect(()=>{
     if(!isAdminRoute || !isLoggedIn) return;
-    const timer = setInterval(()=>loadClients(activeServerId).catch(handleError), 10000);
+    const es = new EventSource('/api/events');
+    es.addEventListener('clients', ()=>loadClients(activeServerId).catch(handleError));
+    return ()=>es.close();
+  },[isAdminRoute, isLoggedIn, activeServerId]);
+
+  useEffect(()=>{
+    if(!isAdminRoute || !isLoggedIn) return;
+    const timer = setInterval(()=>loadClients(activeServerId).catch(handleError), 30000);
     return ()=>clearInterval(timer);
   },[isAdminRoute, isLoggedIn, activeServerId]);
 

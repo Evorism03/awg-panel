@@ -1,9 +1,11 @@
 from fastapi import Cookie, FastAPI, HTTPException, Header, Response
 from fastapi import Query
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-import base64, configparser, ipaddress, json, os, re, secrets, shutil, subprocess, time
+import asyncio, base64, configparser, hashlib, ipaddress, json, os, re, secrets, shutil, subprocess, time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from threading import RLock
 from datetime import date, datetime, timedelta
 import urllib.request
@@ -11,7 +13,55 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
 from .config import *
 
-app = FastAPI(title="AmneziaWG Admin")
+_sse_queues: list = []
+
+def _get_cfg_hash() -> str:
+    try:
+        if AWG_DOCKER_CONTAINER:
+            return ""
+        with open(AWG_CONFIG_PATH, "rb") as f:
+            return hashlib.md5(f.read()).hexdigest()
+    except Exception:
+        return ""
+
+def _get_dump_hash() -> str:
+    try:
+        if MOCK_AWG:
+            return ""
+        cmd = [AWG_BIN, "show", AWG_INTERFACE, "dump"]
+        if AWG_DOCKER_CONTAINER:
+            cmd = ["docker", "exec", "-i", AWG_DOCKER_CONTAINER, AWG_BIN, "show", AWG_INTERFACE, "dump"]
+        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True).strip()
+        return hashlib.md5(out.encode()).hexdigest()
+    except Exception:
+        return ""
+
+async def _sse_monitor():
+    last_cfg = await asyncio.to_thread(_get_cfg_hash)
+    last_dump = await asyncio.to_thread(_get_dump_hash)
+    while True:
+        await asyncio.sleep(3)
+        try:
+            cfg = await asyncio.to_thread(_get_cfg_hash)
+            dump = await asyncio.to_thread(_get_dump_hash)
+            if cfg != last_cfg or dump != last_dump:
+                last_cfg, last_dump = cfg, dump
+                for q in list(_sse_queues):
+                    q.put_nowait("clients")
+        except Exception:
+            pass
+
+@asynccontextmanager
+async def lifespan(_app):
+    task = asyncio.create_task(_sse_monitor())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+app = FastAPI(title="AmneziaWG Admin", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=512)
 data_lock = RLock()
 
@@ -710,6 +760,35 @@ def reload_service():
     result = subprocess.run(RELOAD_COMMAND, shell=True, text=True, capture_output=True)
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=(result.stderr or result.stdout or "Reload failed").strip())
+
+@app.get("/api/events")
+async def sse_events(
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+):
+    auth(authorization, awg_panel_session)
+    queue: asyncio.Queue = asyncio.Queue()
+    _sse_queues.append(queue)
+
+    async def stream():
+        try:
+            yield "data: connected\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=20)
+                    yield f"event: {event}\ndata: 1\n\n"
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+        finally:
+            if queue in _sse_queues:
+                _sse_queues.remove(queue)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
 
 @app.get("/api/health")
 def health():
