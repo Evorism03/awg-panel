@@ -754,12 +754,55 @@ def rename_peer_block(text: str, public_key: str, new_name: str) -> tuple[str, s
     return "\n".join(next_chunks), old_name
 
 
+def _build_syncconf(text: str) -> str:
+    interface = parse_interface(text)
+    lines = ["[Interface]\nPrivateKey = " + interface.get("PrivateKey", "")]
+    for peer in parse_peers(text):
+        peer_lines = ["[Peer]"]
+        for key in ["PublicKey", "PresharedKey", "AllowedIPs", "Endpoint", "PersistentKeepalive"]:
+            val = peer.get(key, "").strip()
+            if val:
+                peer_lines.append(f"{key} = {val}")
+        lines.append("\n".join(peer_lines))
+    return "\n\n".join(lines) + "\n"
+
+
+def _try_syncconf() -> bool:
+    try:
+        stripped = _build_syncconf(read_cfg())
+        if AWG_DOCKER_CONTAINER:
+            cmd = ["docker", "exec", "-i", AWG_DOCKER_CONTAINER, AWG_BIN, "syncconf", AWG_INTERFACE, "/dev/stdin"]
+        else:
+            cmd = [AWG_BIN, "syncconf", AWG_INTERFACE, "/dev/stdin"]
+        result = subprocess.run(cmd, input=stripped, text=True, capture_output=True, timeout=5)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
 def reload_service():
     if MOCK_AWG or not RELOAD_COMMAND:
+        return
+    if _try_syncconf():
         return
     result = subprocess.run(RELOAD_COMMAND, shell=True, text=True, capture_output=True)
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=(result.stderr or result.stdout or "Reload failed").strip())
+
+_reload_lock = __import__('threading').Lock()
+
+def _reload_bg():
+    if not _reload_lock.acquire(blocking=False):
+        return
+    try:
+        reload_service()
+    except Exception:
+        pass
+    finally:
+        _reload_lock.release()
+
+def reload_async():
+    __import__('threading').Thread(target=_reload_bg, daemon=True).start()
 
 @app.get("/api/events")
 async def sse_events(
@@ -1052,7 +1095,7 @@ PresharedKey = {psk}
 AllowedIPs = {ip}/32
 """
         write_cfg(text.rstrip() + peer_block)
-        reload_service()
+        reload_async()
         server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
         cfg = client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
         store_client_export(public_key, name, cfg)
@@ -1142,7 +1185,7 @@ def delete_client_by_key(public_key: str, server_id: str | None = None):
         if expired_removed is not None and not removed_allowed_ips:
             removed_allowed_ips = expired_removed.get("AllowedIPs", "")
         if found:
-            reload_service()
+            reload_async()
         return {"ok": True}
 
 
@@ -1190,7 +1233,7 @@ def update_client_by_key(public_key: str, body: ClientUpdate, server_id: str | N
         next_text, old_name = result
         write_cfg(next_text)
         rename_stored_client_export(target, old_name, new_name)
-        reload_service()
+        reload_async()
         return {"ok": True, "publicKey": target, "name": new_name}
 
 

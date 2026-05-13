@@ -388,7 +388,7 @@ function App(){
     setName('');
     setClientTerm('admin');
     setShowClientForm(false);
-    await load();
+    await loadClients(clientServerId);
     setSelectedConfig(j.config);
     await copyText(j.config, t('configCreatedCopied')).catch(()=>setNotice(t('configCreated')));
   };
@@ -400,7 +400,7 @@ function App(){
     setImportName('');
     setImportConfig('');
     setShowImportForm(false);
-    await load();
+    await loadClients(clientServerId);
     setSelectedConfig(j.config);
     await copyText(j.config, t('configSavedCopied')).catch(()=>setNotice(t('configSaved')));
   };
@@ -444,7 +444,7 @@ function App(){
     setClientPending(rowKey, true);
     try {
       await deleteClientEntry(pk, serverId);
-      await load();
+      await loadClients(serverId);
     } finally {
       setClientPending(rowKey, false);
     }
@@ -469,11 +469,11 @@ function App(){
     try {
       await api(`/api/clients?${params.toString()}`,{method:'PATCH',body:JSON.stringify({name:nextName})});
       cancelEditClient();
-      await load();
+      await loadClients(serverId);
     } catch (error) {
       if (error.status === 404) {
         cancelEditClient();
-        await load().catch(handleError);
+        await loadClients(serverId).catch(handleError);
         setNotice(t('staleData'));
         setTimeout(()=>setNotice(''), 2500);
         return;
