@@ -948,14 +948,16 @@ function App(){
     const created = serverClients.filter(client=>client.createdAt).length;
     const maxUsers = server.id === 'all' ? totalServerMaxUsers : Number(server.maxUsers || 0);
     const keys = new Set(serverClients.map(client=>client.PublicKey));
-    const stats = allServerPeerStats.filter(peer=>keys.has(peer.publicKey));
+    const peerList = allServerPeerStats.filter(peer=>keys.has(peer.publicKey));
+    const online = peerList.filter(peer=>peer.latest && nowSeconds - peer.latest < 60).length;
     return {
       total: serverClients.length,
       active,
+      online,
       created,
       maxUsers,
-      rx: stats.reduce((sum,peer)=>sum + peer.rx, 0),
-      tx: stats.reduce((sum,peer)=>sum + peer.tx, 0),
+      rx: peerList.reduce((sum,peer)=>sum + peer.rx, 0),
+      tx: peerList.reduce((sum,peer)=>sum + peer.tx, 0),
     };
   };
   const serverUsageText = (server) => {
@@ -1019,8 +1021,8 @@ function App(){
     return <tr className="detail-row"><td colSpan={colSpan}>
       <div className="detail-panel server-detail-panel">
         <div className="detail-grid">
-          <div><span>{t('totalClients')}</span><strong>{stats.total}</strong></div>
-          <div><span>{t('activeClients')}</span><strong>{stats.maxUsers > 0 ? `${stats.active} / ${stats.maxUsers}` : stats.active}</strong></div>
+          <div><span>{t('clients')}</span><strong>{stats.maxUsers > 0 ? `${stats.active} / ${stats.maxUsers}` : stats.active}</strong></div>
+          <div><span>{t('activeClients')}</span><strong>{stats.online}</strong></div>
           <div><span>{t('createdClients')}</span><strong>{stats.created}</strong></div>
           <div><span>{t('received')}</span><strong>{formatMb(stats.rx)}</strong></div>
           <div><span>{t('sent')}</span><strong>{formatMb(stats.tx)}</strong></div>
