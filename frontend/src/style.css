@@ -142,7 +142,6 @@ main.public-page{max-width:1280px;padding:24px 24px 36px}
 .order-stat strong{grid-column:1/3;font-size:30px}
 .order-form-grid{display:grid;grid-template-columns:1.2fr 1.2fr .8fr;gap:14px;margin-bottom:16px}
 .order-form-grid label{margin:0}
-.orders-table select{margin-top:8px;padding:9px 10px;max-width:180px}
 .home-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px}
 .chart-card,.traffic-card{margin:18px 0}
 
@@ -288,7 +287,15 @@ main.public-page{max-width:1280px;padding:24px 24px 36px}
   table-layout:fixed;
   min-width:100%;
 }
-.orders-table{min-width:780px}
+.orders-table{width:100%;table-layout:fixed;min-width:520px}
+.orders-table th:nth-child(1),.orders-table td:nth-child(1){width:22%}
+.orders-table th:nth-child(2),.orders-table td:nth-child(2){width:28%}
+.orders-table th:nth-child(3),.orders-table td:nth-child(3){width:18%}
+.orders-table th:nth-child(4),.orders-table td:nth-child(4){width:24%}
+.orders-table th:nth-child(5),.orders-table td:nth-child(5){width:8%;text-align:right}
+.orders-table td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.orders-table td:nth-child(4){white-space:normal;overflow:visible}
+.orders-table select{margin-top:8px;padding:9px 10px;width:100%;max-width:none;white-space:normal}
 .server-table th:nth-child(1),.server-table td:nth-child(1){width:20%}
 .server-table th:nth-child(2),.server-table td:nth-child(2){width:24%}
 .server-table th:nth-child(3),.server-table td:nth-child(3){width:10%}
@@ -747,6 +754,29 @@ pre{
   .server-table{min-width:860px}
   .orders-table{min-width:640px}
   .selection-bar{gap:10px}
+}
+
+/* ─── Per-row pending state ─── */
+.spin-icon{
+  animation:spin .7s linear infinite;
+  color:var(--accent);
+  display:inline-flex;
+  flex-shrink:0;
+  filter:drop-shadow(0 0 6px var(--accent-glow));
+}
+.client-actions-pending{
+  justify-content:center;
+  min-width:96px;
+}
+.client-row-pending{
+  pointer-events:none;
+}
+.client-row-pending td:not(:last-child){
+  opacity:.45;
+  transition:opacity .18s ease;
+}
+.client-row-pending td:last-child{
+  pointer-events:auto;
 }
 
 /* ─── Reduced motion ─── */

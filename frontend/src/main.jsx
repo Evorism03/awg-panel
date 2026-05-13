@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Activity, ArrowDown, ArrowUp, ArrowUpDown, Check, CheckCircle2, ChevronDown, Clipboard, Clock3, CreditCard, Download, Home, LogOut, Pencil, Plus, RefreshCw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
+import {Activity, ArrowDown, ArrowUp, ArrowUpDown, Check, CheckCircle2, ChevronDown, Clipboard, Clock3, CreditCard, Download, Home, Loader2, LogOut, Pencil, Plus, RefreshCw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
 import './style.css';
 
 const api = async (path, options={}) => {
@@ -240,6 +240,7 @@ function App(){
   const [expandedServerId,setExpandedServerId]=useState('');
   const [selectedClientKeys,setSelectedClientKeys]=useState(()=>new Set());
   const [bulkDeleteState,setBulkDeleteState]=useState({running:false,total:0,done:0,last:''});
+  const [pendingClientKeys,setPendingClientKeys]=useState(()=>new Set());
   const [clientSortField,setClientSortField]=useState('name');
   const [clientSortDir,setClientSortDir]=useState('asc');
   const selectionDragRef = useRef({active:false, desired:false, suppressClick:false, lastKey:''});
@@ -429,10 +430,24 @@ function App(){
       }
     }
   };
+  const setClientPending=(key,pending)=>{
+    setPendingClientKeys(current=>{
+      const next=new Set(current);
+      pending ? next.add(key) : next.delete(key);
+      return next;
+    });
+  };
+
   const remove=async(pk, serverId=activeServerId, {confirmDelete=true}={})=>{
     if(confirmDelete && !confirm(t('deleteClient'))) return;
-    await deleteClientEntry(pk, serverId);
-    await load();
+    const rowKey=`${serverId||'local'}:${pk}`;
+    setClientPending(rowKey, true);
+    try {
+      await deleteClientEntry(pk, serverId);
+      await load();
+    } finally {
+      setClientPending(rowKey, false);
+    }
   };
   const clientRowKey=(client)=>`${client.serverId || 'local'}:${client.PublicKey}`;
   const beginEditClient=(client)=>{
@@ -447,10 +462,14 @@ function App(){
     const nextName = editingClientName.trim();
     if(!nextName) return;
     const serverId = client.serverId || activeServerId;
+    const rowKey = clientRowKey(client);
     const params = new URLSearchParams({public_key: client.PublicKey});
     if (serverId) params.set('server_id', serverId);
+    setClientPending(rowKey, true);
     try {
       await api(`/api/clients?${params.toString()}`,{method:'PATCH',body:JSON.stringify({name:nextName})});
+      cancelEditClient();
+      await load();
     } catch (error) {
       if (error.status === 404) {
         cancelEditClient();
@@ -460,9 +479,9 @@ function App(){
         return;
       }
       throw error;
+    } finally {
+      setClientPending(rowKey, false);
     }
-    cancelEditClient();
-    await load();
   };
   const downloadConfig=(config, filename='amneziawg-client.conf')=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([config],{type:'text/plain'})); a.download=filename; a.click(); };
   const download=()=>downloadConfig(lastConfig);
@@ -962,6 +981,11 @@ function App(){
   };
   const renderClientActions=(client)=> {
     const key = clientRowKey(client);
+    if (pendingClientKeys.has(key)) {
+      return <div className="client-actions client-actions-pending">
+        <Loader2 size={18} className="spin-icon"/>
+      </div>;
+    }
     return <div className="client-actions">
       <button className={`secondary icon-button ${isClientSelected(key) ? 'selected' : ''}`} title={isClientSelected(key) ? t('clearSelection') : t('select')} onMouseDown={event=>event.stopPropagation()} onClick={(event)=>{ event.stopPropagation(); toggleClientSelected(client); }}><CheckCircle2 size={16}/></button>
       <button className="secondary icon-button" title={t('details')} onMouseDown={event=>event.stopPropagation()} onClick={(event)=>{ event.stopPropagation(); setExpandedClientKey(expandedClientKey === key ? '' : key); }}><ChevronDown className={expandedClientKey === key ? 'rotated' : ''} size={16}/></button>
@@ -1026,7 +1050,7 @@ function App(){
           </div>
         </div>
         <div className="public-plans">
-          {clientTerms.filter(([value])=>value !== 'admin').map(([value,label])=>(
+          {clientTerms.filter(([value])=>value !== 'admin' && value !== 'forever').map(([value,label])=>(
             <button key={value} type="button" className={orderPlan===dict[uiLang][label] ? 'secondary active' : 'secondary'} onClick={()=>setOrderPlan(dict[uiLang][label])}>
               <strong>{t(label)}</strong>
             </button>
@@ -1043,30 +1067,11 @@ function App(){
         <div className="client-form-grid">
           <label>{t('orderLogin')}<input value={orderLogin} onChange={e=>setOrderLogin(e.target.value)} placeholder={t('orderLoginPlaceholder')} /></label>
           <label>{t('orderEmail')}<input value={orderEmail} onChange={e=>setOrderEmail(e.target.value)} placeholder={t('orderEmailPlaceholder')} /></label>
-          <label>{t('term')}<select value={orderPlan} onChange={e=>setOrderPlan(e.target.value)}>
-            {clientTerms.filter(([value])=>value !== 'admin').map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
-          </select></label>
         </div>
         <button onClick={()=>addOrder().catch(handleError)} disabled={!orderLogin.trim() || !orderEmail.trim()}><Plus size={16}/>{t('purchaseAction')}</button>
       </div>
     </section>
 
-    {orders.length > 0 && <section className="card">
-      <div className="panel-head">
-        <div>
-          <h2>{t('recentOrders')}</h2>
-          <p>{t('allOrders')}: {orders.length}</p>
-        </div>
-      </div>
-      <table className="orders-table"><thead><tr><th>{t('orderLogin')}</th><th>{t('orderEmail')}</th><th>{t('term')}</th><th>{t('status')}</th></tr></thead><tbody>
-        {orders.slice(0,5).map(o=><tr key={o.id}>
-          <td><strong>{o.login}</strong><small>{t('created')}: {o.created}</small></td>
-          <td>{o.email||'—'}</td>
-          <td><span className="badge admin">{o.term}</span></td>
-          <td><span className={`badge ${orderStatusClass(o.status)}`}>{t(normalizeOrderStatus(o.status))}</span></td>
-        </tr>)}
-      </tbody></table>
-    </section>}
   </main>;
 
   if(checkingSession) return <main className="auth-page"><section className="card login-card"><h1>{t('appName')}</h1><p>{t('checking')}</p></section></main>;
@@ -1199,7 +1204,7 @@ function App(){
       <section className="card">
         <div className="panel-head"><div><h2>{t('activeClients')}</h2><p>{t('activeClientsSub')}</p></div><span className="badge ok">{activeClientsList.length}</span></div>
         <table className="client-table active-client-table"><thead><tr><th><button type="button" className={`table-sort ${clientSortField==='name' ? 'active' : ''}`} onClick={()=>setClientSort('name')}>{t('name')}{sortIcon('name')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='server' ? 'active' : ''}`} onClick={()=>setClientSort('server')}>{t('server')}{sortIcon('server')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='status' ? 'active' : ''}`} onClick={()=>setClientSort('status')}>{t('status')}{sortIcon('status')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='expires' ? 'active' : ''}`} onClick={()=>setClientSort('expires')}>{t('expires')}{sortIcon('expires')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='lastConnection' ? 'active' : ''}`} onClick={()=>setClientSort('lastConnection')}>{t('lastConnection')}{sortIcon('lastConnection')}</button></th><th></th></tr></thead><tbody>
-          {sortedActiveClients.map(c=>{ const key = clientRowKey(c); const status = clientStatus(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
+          {sortedActiveClients.map(c=>{ const key = clientRowKey(c); const status = clientStatus(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''} ${pendingClientKeys.has(key) ? 'client-row-pending' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className={`badge ${status.className}`}>{status.label}</span></td>
@@ -1213,7 +1218,7 @@ function App(){
       {pendingRenewalClients.length > 0 && <section className="card">
         <div className="panel-head"><div><h2>{t('expiredClients')}</h2><p>{t('expiredClientsSub')}</p></div><span className="badge expired">{pendingRenewalClients.length}</span></div>
         <table className="client-table expired-client-table"><thead><tr><th><button type="button" className={`table-sort ${clientSortField==='name' ? 'active' : ''}`} onClick={()=>setClientSort('name')}>{t('name')}{sortIcon('name')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='server' ? 'active' : ''}`} onClick={()=>setClientSort('server')}>{t('server')}{sortIcon('server')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='status' ? 'active' : ''}`} onClick={()=>setClientSort('status')}>{t('status')}{sortIcon('status')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='expires' ? 'active' : ''}`} onClick={()=>setClientSort('expires')}>{t('expires')}{sortIcon('expires')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='lastConnection' ? 'active' : ''}`} onClick={()=>setClientSort('lastConnection')}>{t('lastConnection')}{sortIcon('lastConnection')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='blockedAt' ? 'active' : ''}`} onClick={()=>setClientSort('blockedAt')}>{t('blockedAt')}{sortIcon('blockedAt')}</button></th><th></th></tr></thead><tbody>
-          {sortedPendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
+          {sortedPendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''} ${pendingClientKeys.has(key) ? 'client-row-pending' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
@@ -1233,7 +1238,7 @@ function App(){
       </section>
       <section className="card">
         <table className="client-table expired-client-table"><thead><tr><th><button type="button" className={`table-sort ${clientSortField==='name' ? 'active' : ''}`} onClick={()=>setClientSort('name')}>{t('name')}{sortIcon('name')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='server' ? 'active' : ''}`} onClick={()=>setClientSort('server')}>{t('server')}{sortIcon('server')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='status' ? 'active' : ''}`} onClick={()=>setClientSort('status')}>{t('status')}{sortIcon('status')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='expires' ? 'active' : ''}`} onClick={()=>setClientSort('expires')}>{t('expires')}{sortIcon('expires')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='lastConnection' ? 'active' : ''}`} onClick={()=>setClientSort('lastConnection')}>{t('lastConnection')}{sortIcon('lastConnection')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='blockedAt' ? 'active' : ''}`} onClick={()=>setClientSort('blockedAt')}>{t('blockedAt')}{sortIcon('blockedAt')}</button></th><th></th></tr></thead><tbody>
-          {sortedPendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
+          {sortedPendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''} ${pendingClientKeys.has(key) ? 'client-row-pending' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
             <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
@@ -1302,8 +1307,8 @@ function App(){
       </section>
       <section className="server-summary">
         <div className="card metric server-metric"><Server size={22}/><span>{t('servers')}</span><strong>{servers.length}</strong></div>
-        <div className="card metric server-metric"><Activity size={22}/><span>{t('activeClients')}</span><strong>{totalServerMaxUsers > 0 ? `${activeClientTotal} / ${totalServerMaxUsers}` : activeClientTotal}</strong></div>
-        <div className="card metric server-metric"><Users size={22}/><span>{t('clients')}</span><strong>{allServerStatsClients.length}</strong></div>
+        <div className="card metric server-metric"><Activity size={22}/><span>{t('activeClients')}</span><strong>{allServerActiveClientCount}</strong></div>
+        <div className="card metric server-metric"><Users size={22}/><span>{t('clients')}</span><strong>{totalServerMaxUsers > 0 ? `${activeClientTotal} / ${totalServerMaxUsers}` : activeClientTotal}</strong></div>
         <div className="card metric server-metric"><ShoppingCart size={22}/><span>{t('traffic')}</span><strong>{formatMb(allServerTotalRx + allServerTotalTx)}</strong></div>
       </section>
       {showServerForm && <section className="card add-panel">
