@@ -28,9 +28,10 @@ def _get_dump_hash() -> str:
     try:
         if MOCK_AWG:
             return ""
-        cmd = [AWG_BIN, "show", AWG_INTERFACE, "dump"]
+        bin_ = _resolve_awg_bin()
+        cmd = [bin_, "show", AWG_INTERFACE, "dump"]
         if AWG_DOCKER_CONTAINER:
-            cmd = ["docker", "exec", "-i", AWG_DOCKER_CONTAINER, AWG_BIN, "show", AWG_INTERFACE, "dump"]
+            cmd = ["docker", "exec", "-i", AWG_DOCKER_CONTAINER, bin_, "show", AWG_INTERFACE, "dump"]
         out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True).strip()
         return hashlib.md5(out.encode()).hexdigest()
     except Exception:
@@ -120,6 +121,31 @@ def mock_key() -> str:
     return base64.b64encode(secrets.token_bytes(32)).decode()
 
 
+_resolved_awg_bin: str | None = None
+
+def _resolve_awg_bin() -> str:
+    """Return the awg binary to use, auto-detecting inside AWG_DOCKER_CONTAINER if needed."""
+    global _resolved_awg_bin
+    if _resolved_awg_bin:
+        return _resolved_awg_bin
+    if not AWG_DOCKER_CONTAINER or AWG_BIN != "awg":
+        _resolved_awg_bin = AWG_BIN
+        return _resolved_awg_bin
+    for candidate in ["awg", "/usr/bin/awg", "/usr/local/bin/awg"]:
+        try:
+            result = subprocess.run(
+                ["docker", "exec", AWG_DOCKER_CONTAINER, "sh", "-c", f"command -v {candidate}"],
+                capture_output=True, text=True, timeout=3
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                _resolved_awg_bin = result.stdout.strip()
+                return _resolved_awg_bin
+        except Exception:
+            continue
+    _resolved_awg_bin = AWG_BIN
+    return _resolved_awg_bin
+
+
 def awg(args: list[str], input_text: str | None = None) -> str:
     if MOCK_AWG:
         if args in [["genkey"], ["genpsk"]]:
@@ -128,9 +154,10 @@ def awg(args: list[str], input_text: str | None = None) -> str:
             return mock_key()
         if args[:2] == ["show", AWG_INTERFACE]:
             return "mock\tlatest-handshake\ttransfer-rx\ttransfer-tx"
-    cmd = [AWG_BIN, *args]
+    bin_ = _resolve_awg_bin()
+    cmd = [bin_, *args]
     if AWG_DOCKER_CONTAINER:
-        cmd = ["docker", "exec", "-i", AWG_DOCKER_CONTAINER, AWG_BIN, *args]
+        cmd = ["docker", "exec", "-i", AWG_DOCKER_CONTAINER, bin_, *args]
     try:
         return subprocess.check_output(cmd, input=input_text, stderr=subprocess.STDOUT, text=True).strip()
     except subprocess.CalledProcessError as e:
@@ -770,10 +797,11 @@ def _build_syncconf(text: str) -> str:
 def _try_syncconf() -> bool:
     try:
         stripped = _build_syncconf(read_cfg())
+        bin_ = _resolve_awg_bin()
         if AWG_DOCKER_CONTAINER:
-            cmd = ["docker", "exec", "-i", AWG_DOCKER_CONTAINER, AWG_BIN, "syncconf", AWG_INTERFACE, "/dev/stdin"]
+            cmd = ["docker", "exec", "-i", AWG_DOCKER_CONTAINER, bin_, "syncconf", AWG_INTERFACE, "/dev/stdin"]
         else:
-            cmd = [AWG_BIN, "syncconf", AWG_INTERFACE, "/dev/stdin"]
+            cmd = [bin_, "syncconf", AWG_INTERFACE, "/dev/stdin"]
         result = subprocess.run(cmd, input=stripped, text=True, capture_output=True, timeout=5)
         return result.returncode == 0
     except Exception:
