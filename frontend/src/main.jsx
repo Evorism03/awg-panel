@@ -322,10 +322,13 @@ function App(){
     const serverId = await loadServers().catch(handleError);
     if (serverId) setIsLoggedIn(true);
     if (serverId) {
-      await loadClients(serverId, {manual}).catch(handleError);
-      await loadAllServerStats().catch(()=>{});
+      const tasks = [loadClients(serverId, {manual}).catch(handleError)];
+      if (serverId === 'all' || view === 'server') {
+        tasks.push(loadAllServerStats().catch(()=>{}));
+      }
+      await Promise.all(tasks);
     }
-    if (isAdminRoute) {
+    if (isAdminRoute && (view === 'home' || view === 'orders')) {
       await loadOrders().catch(handleError);
     }
   };
@@ -580,10 +583,8 @@ function App(){
       const r = await api(`/api/sync${query}`, {method:'POST'});
       const result = await r.json().catch(()=>null);
       await load().catch(handleError);
-      const localSync = result?.sync || result?.local?.sync;
-      const skipped = Number(localSync?.skippedClientsTableOnly || 0);
       const syncedCount = Number(result?.synced || result?.local?.synced || 0);
-      setNotice(skipped ? `${t('synced')}: ${syncedCount}, ${t('skipped')}: ${skipped}` : `${t('synced')}: ${syncedCount}`);
+      setNotice(`${t('synced')}: ${syncedCount}`);
       setTimeout(()=>setNotice(''), 2500);
     } catch (error) {
       if (error.status === 404) {
@@ -722,9 +723,9 @@ function App(){
 
   useEffect(()=>{
     if(!isAdminRoute || !isLoggedIn) return;
-    const timer = setInterval(()=>load().catch(handleError), 5000);
+    const timer = setInterval(()=>load().catch(handleError), 10000);
     return ()=>clearInterval(timer);
-  },[isAdminRoute, isLoggedIn, activeServerId]);
+  },[isAdminRoute, isLoggedIn, activeServerId, view]);
 
   useEffect(()=>{
     if(!isAdminRoute || !isLoggedIn || view !== 'server') return;

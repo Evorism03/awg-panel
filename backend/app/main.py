@@ -150,30 +150,6 @@ def write_cfg(text: str):
         f.write(text.rstrip() + "\n")
 
 
-def read_awg_file(host_path: str, container_path: str) -> str | None:
-    try:
-        if AWG_DOCKER_CONTAINER:
-            return docker_exec(["sh", "-c", f"test -f {container_path} && cat {container_path}"])
-        if os.path.exists(host_path):
-            with open(host_path, "r", encoding="utf-8") as f:
-                return f.read()
-    except Exception:
-        return None
-    return None
-
-
-def write_awg_file(host_path: str, container_path: str, text: str):
-    if AWG_DOCKER_CONTAINER:
-        docker_exec(["sh", "-c", f"test ! -f {container_path} || cp {container_path} {container_path}.bak.{int(time.time())}"])
-        docker_exec(["sh", "-c", f"cat > {container_path}"], text.rstrip() + "\n")
-        return
-    os.makedirs(os.path.dirname(host_path), exist_ok=True)
-    if os.path.exists(host_path):
-        shutil.copy2(host_path, f"{host_path}.bak.{int(time.time())}")
-    with open(host_path, "w", encoding="utf-8") as f:
-        f.write(text.rstrip() + "\n")
-
-
 def parse_interface(text: str) -> dict:
     m = re.search(r"\[Interface\](.*?)(?=\n\[Peer\]|\Z)", text, re.S)
     if not m:
@@ -339,7 +315,7 @@ def attach_client_source(clients: list[dict], server_id: str, server_name: str) 
 def probe_panel(server: dict) -> str:
     try:
         req = urllib.request.Request(f"{server['baseUrl'].rstrip('/')}/api/health", method="GET")
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
             if resp.status == 200:
                 return "online"
     except Exception:
@@ -361,9 +337,8 @@ def list_servers(include_local: bool = True) -> list[dict]:
 
 def local_clients_payload() -> dict:
     local_name = local_server_identity()["name"]
-    prune_awg_without_client_table()
-    expired_clients = attach_client_source(apply_client_table_names(enforce_expired_clients()), LOCAL_SERVER_ID, local_name)
-    peers = attach_client_source(apply_client_table_names(parse_peers(read_cfg())), LOCAL_SERVER_ID, local_name)
+    expired_clients = attach_client_source(enforce_expired_clients(), LOCAL_SERVER_ID, local_name)
+    peers = attach_client_source(parse_peers(read_cfg()), LOCAL_SERVER_ID, local_name)
     for peer in peers:
         peer["blocked"] = False
         peer["status"] = "active"
@@ -384,86 +359,14 @@ def local_clients_payload() -> dict:
 def sync_local_clients() -> dict:
     with data_lock:
         enforce_expired_clients()
-        text = read_cfg()
-        chunks = re.split(r"\n(?=\[Peer\])", text)
-        peers = []
-        kept_chunks = []
-        table_data = client_table_load()
-        table_entries = client_table_entries(table_data)
-        table_to_awg_synced = 0
-        table_to_awg_skipped = 0
-        removed_from_awg = 0
-
-        for chunk in chunks:
-            if not chunk.strip().startswith("[Peer]"):
-                kept_chunks.append(chunk)
-                continue
-            peer = peer_from_block(chunk)
-            public_key = peer.get("PublicKey", "").strip()
-            allowed_ips = peer.get("AllowedIPs", "").strip()
-            if public_key and client_table_find_entry(table_entries, public_key, allowed_ips):
-                peers.append(peer)
-                kept_chunks.append(chunk)
-                continue
-            removed_from_awg += 1
-
-        peer_keys = {peer.get("PublicKey", "").strip() for peer in peers if peer.get("PublicKey", "").strip()}
-        next_text = "\n".join(kept_chunks).rstrip()
-        for entry in table_entries:
-            peer = client_table_entry_peer(entry)
-            public_key = peer.get("PublicKey", "").strip()
-            if not public_key or public_key in peer_keys:
-                continue
-            block = peer_block_from_table_entry(entry)
-            if block is None:
-                table_to_awg_skipped += 1
-                continue
-            next_text += block
-            peer_keys.add(public_key)
-            table_to_awg_synced += 1
-
-        if next_text != text.rstrip():
-            write_cfg(next_text)
-            reload_service()
-
         payload = local_clients_payload()
-        payload["synced"] = removed_from_awg + table_to_awg_synced
+        payload["synced"] = len(payload.get("clients", []))
         payload["sync"] = {
-            "removedFromAwg": removed_from_awg,
-            "clientsTableToAwg": table_to_awg_synced,
-            "skippedClientsTableOnly": table_to_awg_skipped,
+            "source": "awg",
+            "configPath": AWG_CONTAINER_CONFIG_PATH if AWG_DOCKER_CONTAINER else AWG_CONFIG_PATH,
+            "interface": AWG_INTERFACE,
         }
         return payload
-
-
-def prune_awg_without_client_table() -> int:
-    with data_lock:
-        text = read_cfg()
-        chunks = re.split(r"\n(?=\[Peer\])", text)
-        table_entries = client_table_entries(client_table_load())
-        kept_chunks = []
-        removed = 0
-        removed_keys = []
-        for chunk in chunks:
-            if not chunk.strip().startswith("[Peer]"):
-                kept_chunks.append(chunk)
-                continue
-            peer = peer_from_block(chunk)
-            public_key = peer.get("PublicKey", "").strip()
-            allowed_ips = peer.get("AllowedIPs", "").strip()
-            if public_key and client_table_find_entry(table_entries, public_key, allowed_ips):
-                kept_chunks.append(chunk)
-                continue
-            removed += 1
-            if public_key:
-                removed_keys.append(public_key)
-        if not removed:
-            return 0
-        write_cfg("\n".join(kept_chunks))
-        for public_key in removed_keys:
-            remove_runtime_peer(public_key)
-        reload_service()
-        return removed
 
 
 def remote_clients_payload(server: dict) -> dict:
@@ -708,317 +611,6 @@ def safe_name(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_.-]+", "_", value.strip())
 
 
-CLIENT_TABLE_OUTER_KEY_FIELD = "__awgPanelTableKey"
-CLIENT_TABLE_PUBLIC_KEY_FIELDS = [
-    "PublicKey",
-    "publicKey",
-    "public_key",
-    "clientPublicKey",
-    "client_public_key",
-    "clientId",
-    "client_id",
-]
-CLIENT_TABLE_NAME_FIELDS = [
-    "name",
-    "clientName",
-    "client_name",
-    "displayName",
-    "display_name",
-    "Name",
-    "username",
-    "userName",
-    "description",
-    "Description",
-    "comment",
-    "label",
-    "title",
-]
-CLIENT_TABLE_ADDRESS_FIELDS = [
-    "AllowedIPs",
-    "allowedIPs",
-    "allowedIps",
-    "allowed_ips",
-    "address",
-    "Address",
-    "clientAddress",
-    "client_address",
-    "ip",
-    "clientIp",
-]
-CLIENT_TABLE_PRESHARED_KEY_FIELDS = [
-    "PresharedKey",
-    "presharedKey",
-    "preshared_key",
-    "psk",
-]
-CLIENT_TABLE_CREATED_FIELDS = [
-    "createdAt",
-    "created_at",
-    "created",
-    "creationDate",
-    "creation_date",
-    "createdDate",
-    "dateCreated",
-    "timestamp",
-]
-
-
-def client_table_load():
-    raw = read_awg_file(AWG_CLIENTS_TABLE_PATH, AWG_CONTAINER_CLIENTS_TABLE_PATH)
-    if raw is None or not raw.strip():
-        return []
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return None
-
-
-def client_table_save(data):
-    if data is None:
-        return
-    write_awg_file(
-        AWG_CLIENTS_TABLE_PATH,
-        AWG_CONTAINER_CLIENTS_TABLE_PATH,
-        json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True),
-    )
-
-
-def client_table_entries(data):
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        if isinstance(data.get("clients"), list):
-            return data["clients"]
-        if isinstance(data.get("data"), list):
-            return data["data"]
-        entries = []
-        for key, value in data.items():
-            if not isinstance(value, dict):
-                continue
-            entry = dict(value)
-            entry.setdefault(CLIENT_TABLE_OUTER_KEY_FIELD, str(key))
-            entries.append(entry)
-        return entries
-    return []
-
-
-def client_table_value(entry: dict, fields: list[str]) -> str:
-    if not isinstance(entry, dict):
-        return ""
-    for field in fields:
-        value = entry.get(field)
-        if value is not None and str(value).strip():
-            return str(value).strip()
-    for value in entry.values():
-        if isinstance(value, dict):
-            nested = client_table_value(value, fields)
-            if nested:
-                return nested
-        if isinstance(value, list):
-            for item in value:
-                if isinstance(item, dict):
-                    nested = client_table_value(item, fields)
-                    if nested:
-                        return nested
-    return ""
-
-
-def client_table_config_ips(entry: dict) -> set[str]:
-    ips = set()
-
-    def scan(value):
-        if isinstance(value, dict):
-            for item in value.values():
-                scan(item)
-            return
-        if isinstance(value, list):
-            for item in value:
-                scan(item)
-            return
-        if not isinstance(value, str) or "=" not in value:
-            return
-        for key in ["Address", "AllowedIPs"]:
-            for match in re.finditer(rf"(?m)^\s*{key}\s*=\s*(.+?)\s*$", value):
-                for part in match.group(1).split(","):
-                    part = part.strip()
-                    if part:
-                        ips.add(part.split("/")[0])
-
-    scan(entry)
-    return ips
-
-
-def client_table_address_matches(entry: dict, allowed_ips: str) -> bool:
-    if not allowed_ips:
-        return False
-    target_ips = {part.strip().split("/")[0] for part in allowed_ips.split(",") if part.strip()}
-    entry_value = client_table_value(entry, CLIENT_TABLE_ADDRESS_FIELDS)
-    entry_ips = {part.strip().split("/")[0] for part in entry_value.split(",") if part.strip()}
-    entry_ips |= client_table_config_ips(entry)
-    return bool(target_ips and entry_ips and target_ips & entry_ips)
-
-
-def normalize_allowed_ips(value: str) -> str:
-    parts = []
-    for part in (value or "").split(","):
-        item = part.strip()
-        if not item:
-            continue
-        if "/" not in item:
-            item = f"{item}/32"
-        parts.append(item)
-    return ", ".join(parts)
-
-
-def client_table_entry_matches(entry: dict, public_key: str, allowed_ips: str = "") -> bool:
-    if not isinstance(entry, dict):
-        return False
-    entry_public_key = client_table_value(entry, CLIENT_TABLE_PUBLIC_KEY_FIELDS)
-    if entry_public_key:
-        return entry_public_key == public_key
-    return client_table_address_matches(entry, allowed_ips)
-
-
-def client_table_find_entry(entries: list[dict], public_key: str, allowed_ips: str = "") -> dict | None:
-    for entry in entries:
-        if client_table_entry_matches(entry, public_key, allowed_ips):
-            return entry
-    return None
-
-
-def client_table_entry_peer(entry: dict) -> dict:
-    public_key = client_table_value(entry, CLIENT_TABLE_PUBLIC_KEY_FIELDS)
-    allowed_ips = normalize_allowed_ips(client_table_value(entry, CLIENT_TABLE_ADDRESS_FIELDS))
-    psk = client_table_value(entry, CLIENT_TABLE_PRESHARED_KEY_FIELDS)
-    name = client_table_value(entry, CLIENT_TABLE_NAME_FIELDS) or entry.get(CLIENT_TABLE_OUTER_KEY_FIELD, "").strip()
-    if public_key and (not allowed_ips or not psk):
-        cfg = load_client_export(public_key)
-        if cfg:
-            try:
-                interface, peer, _, _ = client_config_for_amnezia(cfg)
-                allowed_ips = allowed_ips or normalize_allowed_ips(interface.get("Address", ""))
-                psk = psk or peer.get("PresharedKey", "").strip()
-                name = name or client_name_from_config(cfg)
-            except Exception:
-                pass
-    return {
-        "PublicKey": public_key,
-        "PresharedKey": psk,
-        "AllowedIPs": allowed_ips,
-        "name": name or public_key,
-        "createdAt": client_table_value(entry, CLIENT_TABLE_CREATED_FIELDS),
-    }
-
-
-def peer_block_from_table_entry(entry: dict) -> str | None:
-    peer = client_table_entry_peer(entry)
-    if not peer["PublicKey"] or not peer["PresharedKey"] or not peer["AllowedIPs"]:
-        return None
-    return f"""
-
-[Peer]
-# Name: {peer['name']}
-PublicKey = {peer['PublicKey']}
-PresharedKey = {peer['PresharedKey']}
-AllowedIPs = {peer['AllowedIPs']}
-"""
-
-
-def apply_client_table_names(clients: list[dict]) -> list[dict]:
-    data = client_table_load()
-    entries = client_table_entries(data)
-    if not entries:
-        return []
-    synced_clients = []
-    for client in clients:
-        public_key = client.get("PublicKey", "").strip()
-        allowed_ips = client.get("AllowedIPs", "").strip()
-        entry = client_table_find_entry(entries, public_key, allowed_ips)
-        if entry is None:
-            continue
-        name = client_table_value(entry, CLIENT_TABLE_NAME_FIELDS) or entry.get(CLIENT_TABLE_OUTER_KEY_FIELD, "").strip()
-        if name:
-            client["name"] = name
-        created_at = client_table_value(entry, CLIENT_TABLE_CREATED_FIELDS)
-        if created_at:
-            client["createdAt"] = created_at
-        synced_clients.append(client)
-    return synced_clients
-
-
-def client_table_upsert(public_key: str, name: str, allowed_ips: str = ""):
-    data = client_table_load()
-    if data is None:
-        data = []
-    if not isinstance(data, (list, dict)):
-        data = []
-    if isinstance(data, dict) and not isinstance(data.get("clients"), list) and not isinstance(data.get("data"), list):
-        entry = data.get(public_key)
-        if not isinstance(entry, dict):
-            for value in data.values():
-                if not isinstance(value, dict):
-                    continue
-                if client_table_value(value, CLIENT_TABLE_PUBLIC_KEY_FIELDS) == public_key or client_table_address_matches(value, allowed_ips):
-                    entry = value
-                    break
-        if isinstance(entry, dict):
-            entry["name"] = name
-            entry.setdefault("PublicKey", public_key)
-            entry.setdefault("createdAt", date.today().isoformat())
-            if allowed_ips:
-                entry.setdefault("AllowedIPs", allowed_ips)
-        else:
-            data[public_key] = {"PublicKey": public_key, "name": name, "AllowedIPs": allowed_ips, "createdAt": date.today().isoformat()}
-        client_table_save(data)
-        return
-    entries = client_table_entries(data)
-    target = None
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        if client_table_value(entry, CLIENT_TABLE_PUBLIC_KEY_FIELDS) == public_key:
-            target = entry
-            break
-        if not client_table_value(entry, CLIENT_TABLE_PUBLIC_KEY_FIELDS) and client_table_address_matches(entry, allowed_ips):
-            target = entry
-            break
-    if target is None:
-        target = {"PublicKey": public_key, "createdAt": date.today().isoformat()}
-        entries.append(target)
-    target["name"] = name
-    target.setdefault("PublicKey", public_key)
-    target.setdefault("createdAt", date.today().isoformat())
-    if allowed_ips:
-        target.setdefault("AllowedIPs", allowed_ips)
-    client_table_save(data)
-
-
-def client_table_delete(public_key: str, allowed_ips: str = ""):
-    data = client_table_load()
-    if data is None:
-        return
-    if isinstance(data, dict) and public_key in data:
-        data.pop(public_key, None)
-        client_table_save(data)
-        return
-    if isinstance(data, dict) and not isinstance(data.get("clients"), list) and not isinstance(data.get("data"), list):
-        for key, value in list(data.items()):
-            if not isinstance(value, dict):
-                continue
-            if client_table_value(value, CLIENT_TABLE_PUBLIC_KEY_FIELDS) == public_key or client_table_address_matches(value, allowed_ips):
-                data.pop(key, None)
-                client_table_save(data)
-                return
-    entries = client_table_entries(data)
-    for index, entry in enumerate(list(entries)):
-        if not isinstance(entry, dict):
-            continue
-        if client_table_value(entry, CLIENT_TABLE_PUBLIC_KEY_FIELDS) == public_key or client_table_address_matches(entry, allowed_ips):
-            entries.pop(index)
-            client_table_save(data)
-            return
-
-
 def client_export_path(public_key: str) -> str:
     os.makedirs(CLIENTS_DIR, exist_ok=True)
     return f"{CLIENTS_DIR}/{safe_name(public_key)}.conf"
@@ -1114,7 +706,6 @@ def health():
         "ok": True,
         "interface": AWG_INTERFACE,
         "configPath": AWG_CONTAINER_CONFIG_PATH if AWG_DOCKER_CONTAINER else AWG_CONFIG_PATH,
-        "clientsTablePath": AWG_CONTAINER_CLIENTS_TABLE_PATH if AWG_DOCKER_CONTAINER else AWG_CLIENTS_TABLE_PATH,
         "mock": MOCK_AWG,
     }
 
@@ -1371,7 +962,6 @@ PresharedKey = {psk}
 AllowedIPs = {ip}/32
 """
         write_cfg(text.rstrip() + peer_block)
-        client_table_upsert(public_key, name, f"{ip}/32")
         reload_service()
         server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
         cfg = client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
@@ -1407,7 +997,6 @@ def import_client(
         save_expired_clients(expired)
         name = body.name.strip() or client_name_from_config(config_text) or public_key
         store_client_export(public_key, name, config_text)
-        client_table_upsert(public_key, name)
         return {
             "name": name,
             "publicKey": public_key,
@@ -1462,7 +1051,6 @@ def delete_client_by_key(public_key: str, server_id: str | None = None):
                 os.remove(named_path)
         if expired_removed is not None and not removed_allowed_ips:
             removed_allowed_ips = expired_removed.get("AllowedIPs", "")
-        client_table_delete(target, removed_allowed_ips)
         if found:
             reload_service()
         return {"ok": True}
@@ -1505,7 +1093,6 @@ def update_client_by_key(public_key: str, body: ClientUpdate, server_id: str | N
             expired[target]["name"] = new_name
             save_expired_clients(expired)
             rename_stored_client_export(target, old_name, new_name)
-            client_table_upsert(target, new_name, expired[target].get("AllowedIPs", ""))
             return {"ok": True, "publicKey": target, "name": new_name}
         result = rename_peer_block(read_cfg(), target, new_name)
         if result is None:
@@ -1513,8 +1100,6 @@ def update_client_by_key(public_key: str, body: ClientUpdate, server_id: str | N
         next_text, old_name = result
         write_cfg(next_text)
         rename_stored_client_export(target, old_name, new_name)
-        updated_peer = peer_from_block(next((chunk for chunk in re.split(r"\n(?=\[Peer\])", next_text) if target in chunk), ""))
-        client_table_upsert(target, new_name, updated_peer.get("AllowedIPs", ""))
         reload_service()
         return {"ok": True, "publicKey": target, "name": new_name}
 
