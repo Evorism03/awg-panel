@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Activity, Check, CheckCircle2, Clipboard, Clock3, CreditCard, Download, Home, LogOut, Pencil, Plus, RefreshCw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
+import {Activity, Check, CheckCircle2, Clipboard, Clock3, CreditCard, Download, Home, LogOut, MoreVertical, Pencil, Plus, RefreshCw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
 import './style.css';
 
 const api = async (path, options={}) => {
@@ -35,7 +35,7 @@ const dict = {
     traffic:'Трафик', rx:'Прием данных', tx:'Отдача данных', peersDump:'Peers в dump', clientsSub:'Создание, выдача и скачивание конфигов для выбранного сервера',
     importConf:'Импорт .conf', createClient:'Создать клиента', importTitle:'Импорт Amnezia-конфига', close:'Закрыть', clientName:'Имя клиента', readyConf:'Готовый .conf',
     saveCopy:'Сохранить и скопировать config', server:'Сервер', term:'Срок', createIssue:'Создать и выдать config', issuedConf:'Выданный конфиг', name:'Имя', status:'Статус',
-    expires:'Окончание', publicKey:'Публичный ключ', allowedIps:'Разрешенные IP', key:'Ключ', activeClientsSub:'Клиенты с действующей подпиской и активным peer в конфиге.', expiredClientsSub:'Клиенты, которые не продлили подписку. Они заблокированы и хранятся отдельно.', blockedAt:'Заблокирован',
+    expires:'Окончание', publicKey:'Публичный ключ', allowedIps:'Разрешенные IP', key:'Ключ', actions:'Действия', activeClientsSub:'Клиенты с действующей подпиской и активным peer в конфиге.', expiredClientsSub:'Клиенты, которые не продлили подписку. Они заблокированы и хранятся отдельно.', blockedAt:'Заблокирован',
     deleteClient:'Удалить клиента?', copied:'Скопировано', noCopyData:'Нет данных для копирования', serverUnavailable:'Выбранный сервер недоступен. Выбери активный сервер или отредактируй подключение.',
     dataUpdated:'Данные обновлены', configCreatedCopied:'Конфиг создан и скопирован', configCreated:'Конфиг создан', configSavedCopied:'Конфиг сохранен и скопирован', configSaved:'Конфиг сохранен',
     configUnavailable:'Конфиг недоступен', configCopied:'Конфиг скопирован', clientOrOrder:'Клиент или название заказа', contact:'Контакт: Telegram, телефон, email', plan:'Тариф',
@@ -52,7 +52,7 @@ const dict = {
     traffic:'Traffic', rx:'Received', tx:'Sent', peersDump:'Peers in dump', clientsSub:'Create, issue, and download configs for the selected server',
     importConf:'Import .conf', createClient:'Create client', importTitle:'Import Amnezia config', close:'Close', clientName:'Client name', readyConf:'Ready .conf',
     saveCopy:'Save and copy config', server:'Server', term:'Term', createIssue:'Create and issue config', issuedConf:'Issued config', name:'Name', status:'Status',
-    expires:'Expires', publicKey:'Public key', allowedIps:'Allowed IPs', key:'Key', activeClientsSub:'Clients with an active subscription and peer in the config.', expiredClientsSub:'Clients who did not renew. They are blocked and stored separately.', blockedAt:'Blocked',
+    expires:'Expires', publicKey:'Public key', allowedIps:'Allowed IPs', key:'Key', actions:'Actions', activeClientsSub:'Clients with an active subscription and peer in the config.', expiredClientsSub:'Clients who did not renew. They are blocked and stored separately.', blockedAt:'Blocked',
     deleteClient:'Delete client?', copied:'Copied', noCopyData:'No data to copy', serverUnavailable:'Selected server is unavailable. Select an active server or edit the connection.',
     dataUpdated:'Data updated', configCreatedCopied:'Config created and copied', configCreated:'Config created', configSavedCopied:'Config saved and copied', configSaved:'Config saved',
     configUnavailable:'Config unavailable', configCopied:'Config copied', clientOrOrder:'Client or order name', contact:'Contact: Telegram, phone, email', plan:'Plan',
@@ -69,6 +69,13 @@ const dateLabel = (key, lang='ru') => {
   return new Date(`${key}T00:00:00`).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {day:'2-digit', month:'2-digit'});
 };
 const formatDate = (key, lang='ru') => key ? new Date(`${key}T00:00:00`).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {day:'2-digit', month:'2-digit', year:'numeric'}) : '—';
+const formatAnyDate = (value, lang='ru') => {
+  if (!value) return '—';
+  const normalized = String(value).includes('T') ? String(value) : `${value}T00:00:00`;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {day:'2-digit', month:'2-digit', year:'numeric'});
+};
 const isExpired = (key) => key ? key < dateKey() : false;
 const clientTerms = [
   ['admin','admin'], ['1d','oneDay'], ['3d','threeDays'], ['7d','sevenDays'], ['15d','fifteenDays'], ['1m','oneMonth'], ['3m','threeMonths'], ['6m','sixMonths'], ['1y','oneYear'],
@@ -178,6 +185,7 @@ function App(){
   const [error,setError]=useState('');
   const [editingClientKey,setEditingClientKey]=useState('');
   const [editingClientName,setEditingClientName]=useState('');
+  const [openActionMenuKey,setOpenActionMenuKey]=useState('');
   const isAggregateServer = activeServerId === 'all';
 
   const handleError=(e)=>{
@@ -326,6 +334,7 @@ function App(){
   const cancelEditClient=()=>{
     setEditingClientKey('');
     setEditingClientName('');
+    setOpenActionMenuKey('');
   };
   const renameClient=async(client)=>{
     const nextName = editingClientName.trim();
@@ -496,6 +505,21 @@ function App(){
     }
     return <span className="client-name-text">{client.name||'—'}</span>;
   };
+  const renderClientActions=(client)=> {
+    const key = clientRowKey(client);
+    const closeMenu = () => setOpenActionMenuKey('');
+    return <div className="client-actions">
+      <div className="action-menu-wrap">
+        <button className="secondary icon-button" title={t('actions')} onClick={()=>setOpenActionMenuKey(openActionMenuKey === key ? '' : key)}><MoreVertical size={16}/></button>
+        {openActionMenuKey === key && <div className="action-menu">
+          <button className="secondary" onClick={()=>{ closeMenu(); copyClientConfig(client.PublicKey, client.serverId).catch(handleError); }}><Clipboard size={16}/>{t('key')}</button>
+          <button className="secondary" onClick={()=>{ closeMenu(); beginEditClient(client); }}><Pencil size={16}/>{t('editName')}</button>
+          <button className="secondary" onClick={()=>{ closeMenu(); downloadClientConfig(client.PublicKey, client.name||'client', client.serverId).catch(handleError); }}><Download size={16}/>Download</button>
+        </div>}
+      </div>
+      <button className="danger icon-button" title={t('deleteClient')} onClick={()=>remove(client.PublicKey, client.serverId).catch(handleError)}><Trash2 size={16}/></button>
+    </div>;
+  };
 
   if(checkingSession) return <main className="auth-page"><section className="card login-card"><h1>AmneziaWG Admin</h1><p>{t('checking')}</p></section></main>;
 
@@ -601,41 +625,33 @@ function App(){
 
       <section className="card">
         <div className="panel-head"><div><h2>{t('activeClients')}</h2><p>{t('activeClientsSub')}</p></div><span className="badge ok">{activeClientsList.length}</span></div>
-        <table className="client-table active-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+        <table className="client-table active-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('created')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
           {activeClientsList.map(c=>{ const status = clientStatus(c); return <tr key={clientRowKey(c)}>
             <td>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className={`badge ${status.className}`}>{status.label}</span></td>
             <td>{c.expiresAt ? <span className={`badge ${isExpired(c.expiresAt) ? 'expired' : 'muted'}`}>{formatDate(c.expiresAt, lang)}</span> : <span className="badge admin">{t('admin')}</span>}</td>
+            <td>{formatAnyDate(c.createdAt, lang)}</td>
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
-            <td className="table-actions">
-              <button className="secondary icon-button" title={t('key')} onClick={()=>copyClientConfig(c.PublicKey, c.serverId).catch(handleError)}><Clipboard size={16}/></button>
-              <button className="secondary icon-button" title={t('editName')} onClick={()=>beginEditClient(c)}><Pencil size={16}/></button>
-              <button className="secondary icon-button" title="Download" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client', c.serverId).catch(handleError)}><Download size={16}/></button>
-              <button className="danger icon-button" title={t('deleteClient')} onClick={()=>remove(c.PublicKey, c.serverId).catch(handleError)}><Trash2 size={16}/></button>
-            </td>
+            <td className="table-actions">{renderClientActions(c)}</td>
           </tr> })}
         </tbody></table>
       </section>
 
       {pendingRenewalClients.length > 0 && <section className="card">
         <div className="panel-head"><div><h2>{t('expiredClients')}</h2><p>{t('expiredClientsSub')}</p></div><span className="badge expired">{pendingRenewalClients.length}</span></div>
-        <table className="client-table expired-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+        <table className="client-table expired-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('created')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
           {pendingRenewalClients.map(c=><tr key={clientRowKey(c)}>
             <td>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
             <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>
+            <td>{formatAnyDate(c.createdAt, lang)}</td>
             <td>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
-            <td className="table-actions">
-              <button className="secondary icon-button" title={t('key')} onClick={()=>copyClientConfig(c.PublicKey, c.serverId).catch(handleError)}><Clipboard size={16}/></button>
-              <button className="secondary icon-button" title={t('editName')} onClick={()=>beginEditClient(c)}><Pencil size={16}/></button>
-              <button className="secondary icon-button" title="Download" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client', c.serverId).catch(handleError)}><Download size={16}/></button>
-              <button className="danger icon-button" title={t('deleteClient')} onClick={()=>remove(c.PublicKey, c.serverId).catch(handleError)}><Trash2 size={16}/></button>
-            </td>
+            <td className="table-actions">{renderClientActions(c)}</td>
           </tr>)}
         </tbody></table>
       </section>}
@@ -647,21 +663,17 @@ function App(){
         <span className="badge expired">{pendingRenewalClients.length}</span>
       </section>
       <section className="card">
-        <table className="client-table expired-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
+        <table className="client-table expired-client-table"><thead><tr><th>{t('name')}</th><th>{t('server')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('created')}</th><th>{t('blockedAt')}</th><th>{t('publicKey')}</th><th>{t('allowedIps')}</th><th></th></tr></thead><tbody>
           {pendingRenewalClients.map(c=><tr key={clientRowKey(c)}>
             <td>{renderClientName(c)}</td>
             <td>{clientServerName(c)}</td>
             <td><span className="badge expired">{t('renewalPending')}</span></td>
             <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('admin')}</span>}</td>
+            <td>{formatAnyDate(c.createdAt, lang)}</td>
             <td>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
             <td className="mono">{c.PublicKey}</td>
             <td>{c.AllowedIPs}</td>
-            <td className="table-actions">
-              <button className="secondary icon-button" title={t('key')} onClick={()=>copyClientConfig(c.PublicKey, c.serverId).catch(handleError)}><Clipboard size={16}/></button>
-              <button className="secondary icon-button" title={t('editName')} onClick={()=>beginEditClient(c)}><Pencil size={16}/></button>
-              <button className="secondary icon-button" title="Download" onClick={()=>downloadClientConfig(c.PublicKey, c.name||'client', c.serverId).catch(handleError)}><Download size={16}/></button>
-              <button className="danger icon-button" title={t('deleteClient')} onClick={()=>remove(c.PublicKey, c.serverId).catch(handleError)}><Trash2 size={16}/></button>
-            </td>
+            <td className="table-actions">{renderClientActions(c)}</td>
           </tr>)}
         </tbody></table>
       </section>

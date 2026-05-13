@@ -187,15 +187,67 @@ detect_awg_config_path() {
   ' sh "$iface" 2>/dev/null || true
 }
 
+detect_awg_clients_table_path() {
+  local container="$1"
+  local config_path="$2"
+  if [ -n "${AWG_CONTAINER_CLIENTS_TABLE_PATH:-}" ]; then
+    printf '%s' "$AWG_CONTAINER_CLIENTS_TABLE_PATH"
+    return
+  fi
+  docker exec "$container" sh -lc '
+    config_path="$1"
+    config_dir="$(dirname "$config_path")"
+    for path in \
+      "$config_dir/clientsTable" \
+      "/opt/amnezia/awg/clientsTable" \
+      "/opt/amnezia/amneziawg/clientsTable" \
+      "/etc/amnezia/amneziawg/clientsTable" \
+      "/config/clientsTable"; do
+      if [ -f "$path" ]; then
+        printf "%s" "$path"
+        exit 0
+      fi
+    done
+    printf "%s" "$config_dir/clientsTable"
+  ' sh "$config_path" 2>/dev/null || true
+}
+
+ensure_env_key() {
+  local env_path="$1"
+  local key="$2"
+  local value="$3"
+  if grep -q "^${key}=" "$env_path"; then
+    return
+  fi
+  printf '%s=%s\n' "$key" "$value" >> "$env_path"
+}
+
+update_existing_env() {
+  local env_path="$1"
+  local awg_container awg_config_path awg_clients_table_path
+  awg_container="$(env_value AWG_DOCKER_CONTAINER)"
+  [ -n "$awg_container" ] || awg_container="$(detect_awg_container)"
+  [ -n "$awg_container" ] || return
+  awg_config_path="$(env_value AWG_CONTAINER_CONFIG_PATH)"
+  [ -n "$awg_config_path" ] || awg_config_path="$(detect_awg_config_path "$awg_container")"
+  [ -n "$awg_config_path" ] || return
+  awg_clients_table_path="$(env_value AWG_CONTAINER_CLIENTS_TABLE_PATH)"
+  [ -n "$awg_clients_table_path" ] || awg_clients_table_path="$(detect_awg_clients_table_path "$awg_container" "$awg_config_path")"
+  [ -n "$awg_clients_table_path" ] || return
+  ensure_env_key "$env_path" "AWG_CLIENTS_TABLE_PATH" "$awg_clients_table_path"
+  ensure_env_key "$env_path" "AWG_CONTAINER_CLIENTS_TABLE_PATH" "$awg_clients_table_path"
+}
+
 write_env_if_missing() {
   local env_path="$INSTALL_DIR/.env"
   if [ -f "$env_path" ]; then
     log "Keeping existing $env_path"
+    update_existing_env "$env_path"
     chmod 600 "$env_path"
     return
   fi
 
-  local awg_container awg_port server_ip awg_config_path admin_token admin_password
+  local awg_container awg_port server_ip awg_config_path awg_clients_table_path admin_token admin_password
   awg_container="$(detect_awg_container)"
   [ -n "$awg_container" ] || fail "Could not detect AmneziaWG container. Run with AWG_DOCKER_CONTAINER=name."
   awg_port="$(detect_udp_port "$awg_container")"
@@ -203,6 +255,8 @@ write_env_if_missing() {
   server_ip="$(detect_public_ip)"
   awg_config_path="$(detect_awg_config_path "$awg_container")"
   [ -n "$awg_config_path" ] || fail "Could not detect AmneziaWG config in container $awg_container. Run with AWG_CONTAINER_CONFIG_PATH=/path/to/awg0.conf."
+  awg_clients_table_path="$(detect_awg_clients_table_path "$awg_container" "$awg_config_path")"
+  [ -n "$awg_clients_table_path" ] || awg_clients_table_path="$(dirname "$awg_config_path")/clientsTable"
   admin_token="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
   admin_password="$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '=')"
 
@@ -218,6 +272,8 @@ AWG_CONTAINER_NAME=$awg_container
 AWG_DOCKER_CONTAINER=$awg_container
 AWG_CONFIG_PATH=${AWG_CONFIG_PATH:-$awg_config_path}
 AWG_CONTAINER_CONFIG_PATH=$awg_config_path
+AWG_CLIENTS_TABLE_PATH=${AWG_CLIENTS_TABLE_PATH:-$awg_clients_table_path}
+AWG_CONTAINER_CLIENTS_TABLE_PATH=$awg_clients_table_path
 CLIENTS_DIR=/data/clients
 SERVER_ENDPOINT=${SERVER_ENDPOINT:-$server_ip:$awg_port}
 CLIENT_DNS=${CLIENT_DNS:-1.1.1.1}
@@ -293,8 +349,8 @@ healthcheck() {
     fi
     sleep 1
   done
-  docker exec "$BACKEND_CONTAINER" sh -lc 'case "${MOCK_AWG:-false}" in 1|true|yes|on) exit 0;; esac; command -v docker >/dev/null || { echo "docker CLI is missing in backend container" >&2; exit 1; }; test -S /var/run/docker.sock || { echo "/var/run/docker.sock is not mounted as a socket" >&2; exit 1; }; if [ -n "${AWG_DOCKER_CONTAINER:-}" ]; then docker inspect "$AWG_DOCKER_CONTAINER" >/dev/null || { echo "AWG container is not visible: $AWG_DOCKER_CONTAINER" >&2; exit 1; }; docker exec "$AWG_DOCKER_CONTAINER" test -f "$AWG_CONTAINER_CONFIG_PATH" || { echo "AWG config is not visible: $AWG_DOCKER_CONTAINER:$AWG_CONTAINER_CONFIG_PATH" >&2; exit 1; }; fi' \
-    || fail "Backend cannot access Docker or AmneziaWG config. Rebuild backend image, check /var/run/docker.sock mount, AWG_DOCKER_CONTAINER, and AWG_CONTAINER_CONFIG_PATH."
+  docker exec "$BACKEND_CONTAINER" sh -lc 'case "${MOCK_AWG:-false}" in 1|true|yes|on) exit 0;; esac; command -v docker >/dev/null || { echo "docker CLI is missing in backend container" >&2; exit 1; }; test -S /var/run/docker.sock || { echo "/var/run/docker.sock is not mounted as a socket" >&2; exit 1; }; if [ -n "${AWG_DOCKER_CONTAINER:-}" ]; then docker inspect "$AWG_DOCKER_CONTAINER" >/dev/null || { echo "AWG container is not visible: $AWG_DOCKER_CONTAINER" >&2; exit 1; }; docker exec "$AWG_DOCKER_CONTAINER" test -f "$AWG_CONTAINER_CONFIG_PATH" || { echo "AWG config is not visible: $AWG_DOCKER_CONTAINER:$AWG_CONTAINER_CONFIG_PATH" >&2; exit 1; }; if [ -n "${AWG_CONTAINER_CLIENTS_TABLE_PATH:-}" ]; then docker exec "$AWG_DOCKER_CONTAINER" sh -lc "test -f \"\$1\" || test -w \"\$(dirname \"\$1\")\"" sh "$AWG_CONTAINER_CLIENTS_TABLE_PATH" || { echo "AWG clientsTable path is not writable: $AWG_DOCKER_CONTAINER:$AWG_CONTAINER_CLIENTS_TABLE_PATH" >&2; exit 1; }; fi; fi' \
+    || fail "Backend cannot access Docker, AmneziaWG config, or clientsTable path. Rebuild backend image, check /var/run/docker.sock mount, AWG_DOCKER_CONTAINER, AWG_CONTAINER_CONFIG_PATH, and AWG_CONTAINER_CLIENTS_TABLE_PATH."
   if frontend_enabled; then
     curl -fsSI "http://127.0.0.1:$PANEL_HTTP_PORT" >/dev/null || fail "Frontend healthcheck failed"
   fi
@@ -311,12 +367,13 @@ env_value() {
 }
 
 print_summary() {
-  local admin_token admin_username admin_password server_endpoint awg_container awg_port panel_url mode_label
+  local admin_token admin_username admin_password server_endpoint awg_container awg_port awg_clients_table panel_url mode_label
   admin_token="$(env_value ADMIN_TOKEN)"
   admin_username="$(env_value ADMIN_USERNAME)"
   admin_password="$(env_value ADMIN_PASSWORD)"
   server_endpoint="$(env_value SERVER_ENDPOINT)"
   awg_container="$(env_value AWG_DOCKER_CONTAINER)"
+  awg_clients_table="$(env_value AWG_CONTAINER_CLIENTS_TABLE_PATH)"
   awg_port="${server_endpoint##*:}"
   if frontend_enabled; then
     panel_url="http://$(detect_public_ip):$PANEL_HTTP_PORT"
@@ -335,6 +392,7 @@ print_summary() {
   log "WireGuard endpoint for this VPS: $server_endpoint"
   log "AmneziaWG container: $awg_container"
   log "AmneziaWG UDP port: $awg_port"
+  log "AmneziaWG clientsTable: ${awg_clients_table:-not set}"
   log "To add this VPS to another panel, use Panel URL + Panel token."
 }
 

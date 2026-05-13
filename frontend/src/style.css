@@ -83,22 +83,28 @@ main{max-width:1180px;margin:0 auto;padding:28px}
 .server-form-grid,.client-form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:16px}
 .server-form-grid label,.client-form-grid label{margin:0}
 .server-table .selected-row{background:#1b2641}
-.table-actions{display:flex;gap:6px;justify-content:flex-end;align-items:center;white-space:nowrap}
-.client-table{table-layout:fixed;min-width:980px}
-.active-client-table th:nth-child(1),.active-client-table td:nth-child(1){width:16%}
-.active-client-table th:nth-child(2),.active-client-table td:nth-child(2){width:13%}
-.active-client-table th:nth-child(3),.active-client-table td:nth-child(3){width:11%}
-.active-client-table th:nth-child(4),.active-client-table td:nth-child(4){width:11%}
-.active-client-table th:nth-child(5),.active-client-table td:nth-child(5){width:24%}
-.active-client-table th:nth-child(6),.active-client-table td:nth-child(6){width:13%}
-.expired-client-table th:nth-child(1),.expired-client-table td:nth-child(1){width:14%}
-.expired-client-table th:nth-child(2),.expired-client-table td:nth-child(2){width:12%}
-.expired-client-table th:nth-child(3),.expired-client-table td:nth-child(3){width:11%}
-.expired-client-table th:nth-child(4),.expired-client-table td:nth-child(4){width:10%}
-.expired-client-table th:nth-child(5),.expired-client-table td:nth-child(5){width:11%}
-.expired-client-table th:nth-child(6),.expired-client-table td:nth-child(6){width:22%}
-.expired-client-table th:nth-child(7),.expired-client-table td:nth-child(7){width:10%}
-.client-table th:last-child,.client-table td:last-child{width:130px}
+.table-actions{position:relative;white-space:nowrap}
+.client-actions{display:flex;gap:6px;justify-content:flex-end;align-items:center}
+.action-menu-wrap{position:relative}
+.action-menu{position:absolute;right:0;top:40px;z-index:20;display:grid;gap:6px;min-width:178px;padding:8px;background:#11182a;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}
+.action-menu button{justify-content:flex-start;min-height:36px;width:100%;padding:8px 10px}
+.client-table{table-layout:fixed;min-width:1120px}
+.active-client-table th:nth-child(1),.active-client-table td:nth-child(1){width:14%}
+.active-client-table th:nth-child(2),.active-client-table td:nth-child(2){width:12%}
+.active-client-table th:nth-child(3),.active-client-table td:nth-child(3){width:10%}
+.active-client-table th:nth-child(4),.active-client-table td:nth-child(4){width:10%}
+.active-client-table th:nth-child(5),.active-client-table td:nth-child(5){width:10%}
+.active-client-table th:nth-child(6),.active-client-table td:nth-child(6){width:24%}
+.active-client-table th:nth-child(7),.active-client-table td:nth-child(7){width:10%}
+.expired-client-table th:nth-child(1),.expired-client-table td:nth-child(1){width:13%}
+.expired-client-table th:nth-child(2),.expired-client-table td:nth-child(2){width:11%}
+.expired-client-table th:nth-child(3),.expired-client-table td:nth-child(3){width:10%}
+.expired-client-table th:nth-child(4),.expired-client-table td:nth-child(4){width:9%}
+.expired-client-table th:nth-child(5),.expired-client-table td:nth-child(5){width:9%}
+.expired-client-table th:nth-child(6),.expired-client-table td:nth-child(6){width:10%}
+.expired-client-table th:nth-child(7),.expired-client-table td:nth-child(7){width:20%}
+.expired-client-table th:nth-child(8),.expired-client-table td:nth-child(8){width:8%}
+.client-table th:last-child,.client-table td:last-child{width:86px}
 .client-table td{vertical-align:middle}
 .client-name-text{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;word-break:break-word}
 .inline-edit{display:flex;align-items:center;gap:6px;min-width:190px}
@@ -178,8 +184,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#080c17;border:1px sol
   .grid,.dashboard-grid,.order-stats,.server-form-grid,.client-form-grid{grid-template-columns:1fr}
   .token-row button,.row button,.order-form button,.server-form button,.actions button,.section-head button,.panel-head button,.add-panel button{margin-top:12px;width:100%}
   .menu button{flex:1;min-width:130px}
-  .client-table{min-width:920px}
-  .table-actions{display:grid;grid-template-columns:repeat(4,34px);justify-content:start}
+  .client-table{min-width:1080px}
+  .client-actions{justify-content:start}
   .table-actions button{margin-top:0}
   .orders-table select{max-width:none}
   table{display:block;overflow-x:auto}

@@ -42,6 +42,7 @@ docker compose --profile server up -d --build
 - `backend` получает доступ к Docker socket и управляет контейнером `awg`;
 - `AWG_DOCKER_CONTAINER` должен совпадать с `AWG_CONTAINER_NAME`;
 - `AWG_CONTAINER_CONFIG_PATH` указывает путь к `awg0.conf` внутри контейнера;
+- `AWG_CONTAINER_CLIENTS_TABLE_PATH` указывает путь к `clientsTable` внутри контейнера, обычно `/opt/amnezia/awg/clientsTable`;
 - `AWG_HOST_CONFIG_DIR` хранит конфиг на хосте и монтируется в контейнер `awg`.
 
 ## Быстрая установка панели на VPS
@@ -170,6 +171,7 @@ nano .env
 - `AWG_IMAGE` - образ серверного контейнера AmneziaWG
 - `AWG_CONTAINER_NAME` и `AWG_DOCKER_CONTAINER` - имя контейнера AmneziaWG
 - `AWG_CONTAINER_CONFIG_PATH` - путь к конфигу внутри контейнера
+- `AWG_CONTAINER_CLIENTS_TABLE_PATH` - путь к `clientsTable` внутри контейнера для хранения имен и дат создания клиентов
 - `AWG_HOST_CONFIG_DIR` - каталог на хосте, куда монтируется конфиг
 - `SERVER_ENDPOINT` - публичный IP или домен сервера с портом WireGuard
 - `RELOAD_COMMAND` - команда перезапуска интерфейса
