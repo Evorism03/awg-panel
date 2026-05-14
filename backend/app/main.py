@@ -69,13 +69,16 @@ data_lock = RLock()
 class ClientCreate(BaseModel):
     name: str
     term: str = "1m"
+    contact: str = ""
 
 class ClientImport(BaseModel):
     name: str = ""
     config: str
+    contact: str = ""
 
 class ClientUpdate(BaseModel):
-    name: str
+    name: str | None = None
+    contact: str | None = None
 
 class LoginRequest(BaseModel):
     username: str
@@ -256,6 +259,9 @@ def parse_peers(text: str) -> list[dict]:
         expires = re.search(r"#\s*Expires:\s*(.+)", chunk)
         if expires:
             data["expiresAt"] = expires.group(1).strip()
+        id_m = re.search(r"#\s*ID:\s*(.+)", chunk)
+        if id_m:
+            data["clientId"] = id_m.group(1).strip()
         for line in chunk.splitlines():
             if "=" in line and not line.strip().startswith("#"):
                 k, v = line.split("=", 1)
@@ -280,6 +286,33 @@ def load_expired_clients() -> dict:
 def save_expired_clients(clients: dict):
     with open(expired_clients_path(), "w", encoding="utf-8") as f:
         json.dump(clients, f, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def clients_meta_path() -> str:
+    os.makedirs(CLIENTS_DIR, exist_ok=True)
+    return f"{CLIENTS_DIR}/clients-meta.json"
+
+
+def load_clients_meta() -> dict:
+    path = clients_meta_path()
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_clients_meta(meta: dict):
+    with open(clients_meta_path(), "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def attach_meta_to_peers(peers: list[dict]) -> list[dict]:
+    meta = load_clients_meta()
+    for peer in peers:
+        pk = peer.get("PublicKey", "").strip()
+        m = meta.get(pk, {})
+        peer.setdefault("contact", m.get("contact", ""))
+    return peers
 
 
 def servers_path() -> str:
@@ -427,6 +460,7 @@ def local_clients_payload() -> dict:
     local_name = local_server_identity()["name"]
     expired_clients = attach_client_source(enforce_expired_clients(), LOCAL_SERVER_ID, local_name)
     peers = attach_client_source(parse_peers(read_cfg()), LOCAL_SERVER_ID, local_name)
+    attach_meta_to_peers(peers)
     for peer in peers:
         peer["blocked"] = False
         peer["status"] = "active"
@@ -563,10 +597,11 @@ def panel_bytes(server: dict, method: str, path: str, payload: dict | None = Non
 
 def expired_clients_list() -> list[dict]:
     clients = load_expired_clients()
-    return sorted(
+    result = sorted(
         clients.values(),
         key=lambda client: (client.get("expiresAt", ""), client.get("name", "")),
     )
+    return attach_meta_to_peers(result)
 
 
 def is_expired_date(value: str | None) -> bool:
@@ -1114,22 +1149,29 @@ def create_client(
         ip = next_ip(interface.get("Address", "10.8.1.1/24"), peers)
         expires_at = expiration_date(body.term)
         expires_line = f"# Expires: {expires_at}\n" if expires_at else ""
+        client_id = secrets.token_hex(4)
         peer_block = f"""
 
 [Peer]
 # Name: {name}
+# ID: {client_id}
 {expires_line}PublicKey = {public_key}
 PresharedKey = {psk}
 AllowedIPs = {ip}/32
 """
         write_cfg(text.rstrip() + peer_block)
         reload_async()
+        meta = load_clients_meta()
+        meta[public_key] = {"contact": body.contact.strip()}
+        save_clients_meta(meta)
         server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
         cfg = client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
         store_client_export(public_key, name, cfg)
         return {
             "name": name,
             "publicKey": public_key,
+            "clientId": client_id,
+            "contact": body.contact.strip(),
             "address": f"{ip}/32",
             "expiresAt": expires_at,
             "config": cfg,
@@ -1157,10 +1199,17 @@ def import_client(
         expired.pop(public_key, None)
         save_expired_clients(expired)
         name = body.name.strip() or client_name_from_config(config_text) or public_key
+        meta = load_clients_meta()
+        entry = meta.get(public_key, {})
+        if body.contact.strip():
+            entry["contact"] = body.contact.strip()
+        meta[public_key] = entry
+        save_clients_meta(meta)
         store_client_export(public_key, name, config_text)
         return {
             "name": name,
             "publicKey": public_key,
+            "contact": entry.get("contact", ""),
             "config": config_text.rstrip() + "\n",
             "configUrl": f"/api/client-config?public_key={public_key}",
         }
@@ -1170,10 +1219,15 @@ def delete_client_by_key(public_key: str, server_id: str | None = None):
     if server is not None:
         return panel_json(server, "DELETE", f"/clients?public_key={quote(public_key.strip(), safe='')}")
     with data_lock:
+        target_key = public_key.strip()
         expired = load_expired_clients()
-        expired_removed = expired.pop(public_key.strip(), None)
+        expired_removed = expired.pop(target_key, None)
         if expired_removed is not None:
             save_expired_clients(expired)
+        meta = load_clients_meta()
+        if target_key in meta:
+            meta.pop(target_key)
+            save_clients_meta(meta)
         text = read_cfg()
         target = public_key.strip()
         chunks = re.split(r"\n(?=\[Peer\])", text)
@@ -1242,27 +1296,42 @@ def delete_client(
 def update_client_by_key(public_key: str, body: ClientUpdate, server_id: str | None = None):
     server = get_server(server_id)
     if server is not None:
-        return panel_json(server, "PATCH", f"/clients?public_key={quote(public_key.strip(), safe='')}", payload=body.model_dump())
+        return panel_json(server, "PATCH", f"/clients?public_key={quote(public_key.strip(), safe='')}", payload=body.model_dump(exclude_none=True))
     with data_lock:
+        target = public_key.strip()
+        result = {"ok": True, "publicKey": target}
+
+        if body.contact is not None:
+            meta = load_clients_meta()
+            entry = meta.get(target, {})
+            entry["contact"] = body.contact.strip()
+            meta[target] = entry
+            save_clients_meta(meta)
+            result["contact"] = body.contact.strip()
+
+        if body.name is None:
+            return result
+
         new_name = body.name.strip()
         if not new_name:
             raise HTTPException(400, "Client name is required")
-        target = public_key.strip()
+
         expired = load_expired_clients()
         if target in expired:
             old_name = expired[target].get("name", "")
             expired[target]["name"] = new_name
             save_expired_clients(expired)
             rename_stored_client_export(target, old_name, new_name)
-            return {"ok": True, "publicKey": target, "name": new_name}
-        result = rename_peer_block(read_cfg(), target, new_name)
-        if result is None:
+            return {**result, "name": new_name}
+
+        rename_result = rename_peer_block(read_cfg(), target, new_name)
+        if rename_result is None:
             raise HTTPException(status_code=404, detail="Client not found")
-        next_text, old_name = result
+        next_text, old_name = rename_result
         write_cfg(next_text)
         rename_stored_client_export(target, old_name, new_name)
         reload_async()
-        return {"ok": True, "publicKey": target, "name": new_name}
+        return {**result, "name": new_name}
 
 
 @app.patch("/api/clients")

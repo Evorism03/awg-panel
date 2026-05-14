@@ -53,6 +53,7 @@ const dict = {
     addServer:'Добавить сервер', editServer:'Редактировать сервер', title:'Название', panelUrl:'URL панели', token:'Токен', saveServer:'Сохранить сервер', endpoint:'URL панели', set:'Задан',
     notSet:'Не задан', active:'Активен', inactiveEdit:'Неактивен · редактировать', select:'Выбрать', edit:'Редактировать', activeServer:'Активный сервер', dumpTitle:'Активный сервер: awg dump',
     noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.', details:'Подробнее', lastSeen:'Последнее подключение', never:'Никогда', download:'Скачать', copyConfig:'Скопировать конфиг', received:'Загрузка', sent:'Отдача', createdClients:'Созданных клиентов',
+    contact:'Контакт', contactPlaceholder:'Email или телефон', clientId:'ID клиента', editContact:'Изменить контакт', saveContact:'Сохранить контакт',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Текущая панель', deleteServer:'Удалить сервер?',
     sortBy:'Сортировка', sortNameAsc:'Имя A-Z', sortNameDesc:'Имя Z-A', sortCreatedDesc:'Дата создания, новые', sortCreatedAsc:'Дата создания, старые', sortLastSeenDesc:'Последнее подключение, новые', sortLastSeenAsc:'Последнее подключение, старые', selectAll:'Выбрать все', clearSelection:'Снять выбор', deleteSelected:'Удалить выбранные', selectedClients:'Выбрано клиентов', createdOnly:'Дата создания', lastConnection:'Последнее подключение', deleting:'Удаление', deleted:'Удалено', bulkActions:'Действия группы', bulkReady:'Можно удалять выбранных', purchase:'Покупка', purchaseSub:'', purchaseLead:'', purchaseOrderSub:'', purchaseAction:'', adminPanel:'Админ-панель'
   },
@@ -80,6 +81,7 @@ const dict = {
     addServer:'Add server', editServer:'Edit server', title:'Title', panelUrl:'Panel URL', token:'Token', saveServer:'Save server', endpoint:'Panel URL', set:'Set',
     notSet:'Not set', active:'Active', inactiveEdit:'Inactive · edit', select:'Select', edit:'Edit', activeServer:'Active server', dumpTitle:'Active server: awg dump',
     noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.', details:'Details', lastSeen:'Last connected', never:'Never', download:'Download', copyConfig:'Copy config', received:'Received', sent:'Sent', createdClients:'Created clients',
+    contact:'Contact', contactPlaceholder:'Email or phone', clientId:'Client ID', editContact:'Edit contact', saveContact:'Save contact',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Current panel', deleteServer:'Delete server?',
     sortBy:'Sort', sortNameAsc:'Name A-Z', sortNameDesc:'Name Z-A', sortCreatedDesc:'Created newest', sortCreatedAsc:'Created oldest', sortLastSeenDesc:'Last connected newest', sortLastSeenAsc:'Last connected oldest', selectAll:'Select all', clearSelection:'Clear selection', deleteSelected:'Delete selected', selectedClients:'Selected clients', createdOnly:'Created date', lastConnection:'Last connected', deleting:'Deleting', deleted:'Deleted', bulkActions:'Group actions', bulkReady:'Ready to delete selected', purchase:'Purchase', purchaseSub:'', purchaseLead:'', purchaseOrderSub:'', purchaseAction:'', adminPanel:'Admin panel'
   }
@@ -209,6 +211,7 @@ function App(){
   const [allServerClients,setAllServerClients]=useState([]);
   const [allServerDump,setAllServerDump]=useState('');
   const [name,setName]=useState('');
+  const [clientContact,setClientContact]=useState('');
   const [clientTerm,setClientTerm]=useState('admin');
   const [showClientForm,setShowClientForm]=useState(false);
   const [importName,setImportName]=useState('');
@@ -236,6 +239,8 @@ function App(){
   const [isSyncing,setIsSyncing]=useState(false);
   const [editingClientKey,setEditingClientKey]=useState('');
   const [editingClientName,setEditingClientName]=useState('');
+  const [editingContactKey,setEditingContactKey]=useState('');
+  const [editingContactValue,setEditingContactValue]=useState('');
   const [expandedClientKey,setExpandedClientKey]=useState('');
   const [expandedServerId,setExpandedServerId]=useState('');
   const [expandedOrderId,setExpandedOrderId]=useState('');
@@ -383,11 +388,12 @@ function App(){
       return;
     }
     const query = clientServerId ? `?server_id=${encodeURIComponent(clientServerId)}` : '';
-    const r=await api(`/api/clients${query}`,{method:'POST',body:JSON.stringify({name, term:clientTerm})});
+    const r=await api(`/api/clients${query}`,{method:'POST',body:JSON.stringify({name, term:clientTerm, contact:clientContact})});
     const j=await r.json();
     setLastConfig(j.config);
     saveClientConfig(j.publicKey, j.config);
     setName('');
+    setClientContact('');
     setClientTerm('admin');
     setShowClientForm(false);
     await loadClients(clientServerId);
@@ -459,6 +465,22 @@ function App(){
   const cancelEditClient=()=>{
     setEditingClientKey('');
     setEditingClientName('');
+  };
+  const beginEditContact=(client)=>{
+    setEditingContactKey(clientRowKey(client));
+    setEditingContactValue(client.contact||'');
+  };
+  const cancelEditContact=()=>{
+    setEditingContactKey('');
+    setEditingContactValue('');
+  };
+  const saveContact=async(client)=>{
+    const serverId=client.serverId||activeServerId;
+    const params=new URLSearchParams({public_key:client.PublicKey});
+    if(serverId) params.set('server_id',serverId);
+    await api(`/api/clients?${params.toString()}`,{method:'PATCH',body:JSON.stringify({contact:editingContactValue})});
+    cancelEditContact();
+    await loadClients(serverId);
   };
   const renameClient=async(client)=>{
     const nextName = editingClientName.trim();
@@ -1017,6 +1039,20 @@ function App(){
           <div><span>{t('sent')}</span><strong>{formatMb(stat?.tx || 0)}</strong></div>
           <div><span>{t('publicKey')}</span><strong className="mono">{client.PublicKey || '—'}</strong></div>
           <div><span>{t('allowedIps')}</span><strong>{client.AllowedIPs || '—'}</strong></div>
+          {client.clientId && <div><span>{t('clientId')}</span><strong className="mono">{client.clientId}</strong></div>}
+          <div><span>{t('contact')}</span>
+            {editingContactKey===clientRowKey(client)
+              ? <span className="inline-edit">
+                  <input value={editingContactValue} onChange={e=>setEditingContactValue(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') saveContact(client).catch(handleError); if(e.key==='Escape') cancelEditContact(); }} autoFocus placeholder={t('contactPlaceholder')} />
+                  <button className="secondary icon-button" title={t('saveContact')} onClick={()=>saveContact(client).catch(handleError)}><Check size={16}/></button>
+                  <button className="secondary icon-button" title={t('cancel')} onClick={cancelEditContact}><X size={16}/></button>
+                </span>
+              : <span className="contact-display">
+                  <strong>{client.contact||'—'}</strong>
+                  <button className="secondary icon-button" title={t('editContact')} onClick={()=>beginEditContact(client)}><Pencil size={16}/></button>
+                </span>
+            }
+          </div>
         </div>
         <div className="detail-actions">
           <button className="secondary" onClick={()=>copyClientConfig(client.PublicKey, client.serverId).catch(handleError)}><Clipboard size={16}/>{t('copyConfig')}</button>
@@ -1193,6 +1229,7 @@ function App(){
         </div>
         <div className="client-form-grid">
           <label>{t('clientName')}<input value={name} onChange={e=>setName(e.target.value)} placeholder={t('clientNamePlaceholder')} /></label>
+          <label>{t('contact')}<input value={clientContact} onChange={e=>setClientContact(e.target.value)} placeholder={t('contactPlaceholder')} /></label>
           <label>{t('server')}<select value={clientServerId} onChange={e=>setClientServerId(e.target.value)}>
             {servers.map(server=><option key={server.id} value={server.id}>{server.name} · {server.kind === 'local' ? t('localServer') : server.baseUrl}</option>)}
           </select></label>
