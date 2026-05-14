@@ -651,8 +651,6 @@ pre{
   .home-layout{grid-template-columns:minmax(0,1fr) 260px}
   .dashboard-grid,.order-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .server-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .client-table{min-width:1040px}
-  .expired-client-table{min-width:1140px}
   .server-detail-panel .detail-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 
@@ -692,9 +690,6 @@ pre{
   .menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .menu button{min-width:0;width:100%;padding:10px 9px}
   .card{padding:16px}
-  .client-table{min-width:1000px}
-  .expired-client-table{min-width:1080px}
-  .server-table{min-width:980px}
   .client-actions{justify-content:start}
   .table-actions button{margin-top:0}
   .detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -720,6 +715,90 @@ pre{
   .metric strong{font-size:28px}
 }
 
+/* ─── Responsive tables → card layout ≤640px ─── */
+@media(max-width:640px){
+  .client-table,.orders-table,.server-table{
+    display:block !important;
+    min-width:0 !important;
+    width:100% !important;
+    table-layout:auto !important;
+  }
+  .client-table th,.client-table td,
+  .orders-table th,.orders-table td,
+  .server-table th,.server-table td{width:auto !important}
+  .card > table{overflow-x:visible}
+  .table-wrap{overflow-x:visible}
+  .client-table thead,.orders-table thead,.server-table thead{display:none}
+  .client-table tbody,.orders-table tbody,.server-table tbody{display:flex;flex-direction:column;gap:0}
+  .client-table tr:not(.detail-row),
+  .orders-table tr:not(.detail-row),
+  .server-table tr:not(.detail-row){
+    display:flex;flex-direction:column;
+    padding:12px;
+    border:1px solid var(--border);
+    border-radius:var(--radius-sm);
+    margin-bottom:8px;
+  }
+  .client-table tr.expanded:not(.detail-row),
+  .orders-table tr.expanded:not(.detail-row),
+  .server-table tr.expanded:not(.detail-row){
+    margin-bottom:0;
+    border-bottom-left-radius:0;
+    border-bottom-right-radius:0;
+  }
+  .client-table tr.detail-row,
+  .orders-table tr.detail-row,
+  .server-table tr.detail-row{
+    display:block;
+    margin-bottom:8px;
+    border:1px solid var(--border);
+    border-top:none;
+    border-radius:0 0 var(--radius-sm) var(--radius-sm);
+  }
+  .client-table tr.detail-row td,
+  .orders-table tr.detail-row td,
+  .server-table tr.detail-row td{display:block;padding:0;white-space:normal;overflow:visible}
+  .client-table td:not(.table-actions),
+  .orders-table td:not(.table-actions),
+  .server-table td:not(.table-actions){
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:5px 0;
+    overflow:visible;
+    white-space:normal;
+    text-overflow:clip;
+    font-size:13px;
+    border-bottom:none;
+  }
+  .client-table td[data-label]::before,
+  .orders-table td[data-label]::before,
+  .server-table td[data-label]::before{
+    content:attr(data-label);
+    color:var(--muted);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    flex:0 0 36%;
+    padding-right:8px;
+  }
+  .client-table .table-actions,
+  .orders-table .table-actions,
+  .server-table .table-actions{
+    display:flex;justify-content:flex-start;flex-wrap:wrap;gap:6px;
+    padding-top:10px;margin-top:6px;
+    border-top:1px solid rgba(255,255,255,.06);
+    white-space:normal;overflow:visible;
+  }
+  .client-table .table-actions::before,
+  .orders-table .table-actions::before,
+  .server-table .table-actions::before{display:none}
+  .client-table .table-actions button,
+  .orders-table .table-actions button,
+  .server-table .table-actions button{flex:0 0 auto;width:auto;min-width:0}
+  .server-table .table-actions{flex-wrap:wrap}
+}
+
 /* ─── Responsive: ≤520px ─── */
 @media(max-width:520px){
   main{padding:14px}
@@ -743,10 +822,6 @@ pre{
   button{min-height:40px;padding:10px 12px;font-size:13px}
   .icon-button{width:32px;min-height:32px;padding:0}
   .badge{padding:4px 8px;font-size:11px}
-  .client-table{min-width:920px}
-  .expired-client-table{min-width:1020px}
-  .server-table{min-width:940px}
-  .orders-table{min-width:600px}
   .detail-row td{padding:0 8px 10px}
   .detail-panel{padding:12px}
   .detail-grid,.server-detail-panel .detail-grid{grid-template-columns:1fr}
@@ -774,10 +849,6 @@ pre{
   .menu{grid-template-columns:repeat(2,minmax(0,1fr))}
   .actions > button{flex-basis:100%}
   .server-summary{grid-template-columns:1fr}
-  .client-table{min-width:880px}
-  .expired-client-table{min-width:980px}
-  .server-table{min-width:860px}
-  .orders-table{min-width:540px}
   .selection-bar{gap:10px}
 }
 

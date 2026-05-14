@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Activity, ArrowDown, ArrowUp, ArrowUpDown, Check, CheckCircle2, ChevronDown, Clipboard, Clock3, CreditCard, Download, Home, Loader2, LogOut, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
+import {Activity, ArrowDown, ArrowUp, ArrowUpDown, Check, CheckCircle2, ChevronDown, Clipboard, Clock3, CreditCard, Download, Home, Loader2, LogOut, Pencil, Play, Plus, QrCode, RefreshCw, RotateCcw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
 import QRCodeLib from 'qrcode';
 import './style.css';
 
@@ -57,7 +57,8 @@ const dict = {
     deleteClient:'Удалить клиента?', copied:'Скопировано', noCopyData:'Нет данных для копирования', serverUnavailable:'Выбранный сервер недоступен. Выбери активный сервер или отредактируй подключение.',
     dataUpdated:'Данные обновлены', configCreatedCopied:'Конфиг создан и скопирован', configCreated:'Конфиг создан', configSavedCopied:'Конфиг сохранен и скопирован', configSaved:'Конфиг сохранен',
     configUnavailable:'Конфиг недоступен', configCopied:'Конфиг скопирован', staleData:'Данные уже изменил другой админ, список обновлён',
-    add:'Добавить', activeOrder:'Активный', paid:'Оплачен', issued:'Выдан', closed:'Закрыт', ordersSub:'Заявки, оплаты и выдача доступов клиентам.', allOrders:'Все заказы', newOrder:'Новый заказ', recentOrders:'Последние заказы', noOrders:'Заказов пока нет', created:'Создан', serversSub:'Список подключений для управления несколькими панелями VPS',
+    add:'Добавить', activeOrder:'Активный', paid:'Оплачен', issued:'Выдан', closed:'Закрыт', pending:'Ожидает', ordersSub:'Заявки, оплаты и выдача доступов клиентам.', allOrders:'Все заказы', newOrder:'Новый заказ', recentOrders:'Последние заказы', noOrders:'Заказов пока нет', created:'Создан', serversSub:'Список подключений для управления несколькими панелями VPS',
+    processOrder:'Обработать', processing:'Обработка...', orderIssued:'Конфиг выдан', orderPending:'Нет свободного сервера', orderServer:'Сервер', orderConfig:'Конфиг клиента', retryProcess:'Повторить', processedAt:'Обработан',
     orderLogin:'Логин', orderEmail:'Почта', orderLoginPlaceholder:'login123', orderEmailPlaceholder:'mail@example.com',
     addServer:'Добавить сервер', editServer:'Редактировать сервер', title:'Название', panelUrl:'URL панели', token:'Токен', saveServer:'Сохранить сервер', endpoint:'URL панели', set:'Задан',
     notSet:'Не задан', active:'Активен', inactiveEdit:'Неактивен · редактировать', select:'Выбрать', edit:'Редактировать', activeServer:'Активный сервер', dumpTitle:'Активный сервер: awg dump',
@@ -87,7 +88,8 @@ const dict = {
     deleteClient:'Delete client?', copied:'Copied', noCopyData:'No data to copy', serverUnavailable:'Selected server is unavailable. Select an active server or edit the connection.',
     dataUpdated:'Data updated', configCreatedCopied:'Config created and copied', configCreated:'Config created', configSavedCopied:'Config saved and copied', configSaved:'Config saved',
     configUnavailable:'Config unavailable', configCopied:'Config copied', staleData:'Another admin already changed this data, list refreshed',
-    add:'Add', activeOrder:'Active', paid:'Paid', issued:'Issued', closed:'Closed', ordersSub:'Requests, payments, and issuing client access.', allOrders:'All orders', newOrder:'New order', recentOrders:'Recent orders', noOrders:'No orders yet', created:'Created', serversSub:'Connection list for managing multiple VPS panels',
+    add:'Add', activeOrder:'Active', paid:'Paid', issued:'Issued', closed:'Closed', pending:'Pending', ordersSub:'Requests, payments, and issuing client access.', allOrders:'All orders', newOrder:'New order', recentOrders:'Recent orders', noOrders:'No orders yet', created:'Created', serversSub:'Connection list for managing multiple VPS panels',
+    processOrder:'Process', processing:'Processing...', orderIssued:'Config issued', orderPending:'No server available', orderServer:'Server', orderConfig:'Client config', retryProcess:'Retry', processedAt:'Processed at',
     orderLogin:'Login', orderEmail:'Email', orderLoginPlaceholder:'login123', orderEmailPlaceholder:'mail@example.com',
     addServer:'Add server', editServer:'Edit server', title:'Title', panelUrl:'Panel URL', token:'Token', saveServer:'Save server', endpoint:'Panel URL', set:'Set',
     notSet:'Not set', active:'Active', inactiveEdit:'Inactive · edit', select:'Select', edit:'Edit', activeServer:'Active server', dumpTitle:'Active server: awg dump',
@@ -124,6 +126,7 @@ const clientTerms = [
   ['admin','admin'], ['forever','forever'], ['1d','oneDay'], ['3d','threeDays'], ['7d','sevenDays'], ['15d','fifteenDays'], ['1m','oneMonth'], ['3m','threeMonths'], ['6m','sixMonths'], ['1y','oneYear'],
 ];
 const orderStatuses = [
+  ['pending', 'pending', Clock3],
   ['active', 'activeOrder', Clock3],
   ['paid', 'paid', CreditCard],
   ['issued', 'issued', UserCheck],
@@ -136,11 +139,13 @@ const orderStatusAliases = {
   'Оплачен': 'paid',
   'Выдан': 'issued',
   'Закрыт': 'closed',
+  'Ожидает': 'pending',
   Active: 'active',
   New: 'active',
   Paid: 'paid',
   Issued: 'issued',
   Closed: 'closed',
+  Pending: 'pending',
 };
 const normalizeOrderStatus = (status) => orderStatusAliases[status] || status || 'active';
 const orderStatusClass = (status) => ({
@@ -149,6 +154,7 @@ const orderStatusClass = (status) => ({
   paid: 'warn',
   issued: 'ok',
   closed: 'admin',
+  pending: 'warn',
 })[normalizeOrderStatus(status)] || 'muted';
 
 const smoothPath = (coords) => {
@@ -257,6 +263,7 @@ function App(){
   const [editingContactValue,setEditingContactValue]=useState('');
   const [renewingClientKey,setRenewingClientKey]=useState('');
   const [renewTerm,setRenewTerm]=useState('1m');
+  const [processingOrderIds,setProcessingOrderIds]=useState(()=>new Set());
   const [portalContact,setPortalContact]=useState('');
   const [portalClients,setPortalClients]=useState(null);
   const [portalLoading,setPortalLoading]=useState(false);
@@ -712,6 +719,18 @@ function App(){
     setOrderEmail('');
     if (isAdminRoute) {
       await loadOrders();
+    }
+  };
+  const processOrder=async(id)=>{
+    if (!isAdminRoute || !isLoggedIn) return;
+    setProcessingOrderIds(s=>new Set([...s,id]));
+    try {
+      const r=await api(`/api/orders/${encodeURIComponent(id)}/process`,{method:'POST'});
+      const j=await r.json();
+      const updated=normalizeOrder(j.order||{});
+      setOrders(current=>current.map(o=>o.id===updated.id?updated:o));
+    } finally {
+      setProcessingOrderIds(s=>{ const n=new Set(s); n.delete(id); return n; });
     }
   };
   const updateOrder=async(id,status)=>{
@@ -1368,11 +1387,11 @@ function App(){
         <div className="panel-head"><div><h2>{t('activeClients')}</h2><p>{t('activeClientsSub')}</p></div><span className="badge ok">{activeClientsList.length}</span></div>
         <table className="client-table active-client-table"><thead><tr><th><button type="button" className={`table-sort ${clientSortField==='name' ? 'active' : ''}`} onClick={()=>setClientSort('name')}>{t('name')}{sortIcon('name')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='server' ? 'active' : ''}`} onClick={()=>setClientSort('server')}>{t('server')}{sortIcon('server')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='status' ? 'active' : ''}`} onClick={()=>setClientSort('status')}>{t('status')}{sortIcon('status')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='expires' ? 'active' : ''}`} onClick={()=>setClientSort('expires')}>{t('expires')}{sortIcon('expires')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='lastConnection' ? 'active' : ''}`} onClick={()=>setClientSort('lastConnection')}>{t('lastConnection')}{sortIcon('lastConnection')}</button></th><th></th></tr></thead><tbody>
           {sortedActiveClients.map(c=>{ const key = clientRowKey(c); const status = clientStatus(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''} ${pendingClientKeys.has(key) ? 'client-row-pending' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
-            <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
-            <td>{clientServerName(c)}</td>
-            <td><span className={`badge ${status.className}`}>{status.label}</span></td>
-            <td>{c.expiresAt ? <span className={`badge ${isExpired(c.expiresAt) ? 'expired' : 'muted'}`}>{formatDate(c.expiresAt, lang)}</span> : <span className="badge admin">{t('forever')}</span>}</td>
-            <td>{lastSeenText(c)}</td>
+            <td data-label={t('name')} onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
+            <td data-label={t('server')}>{clientServerName(c)}</td>
+            <td data-label={t('status')}><span className={`badge ${status.className}`}>{status.label}</span></td>
+            <td data-label={t('expires')}>{c.expiresAt ? <span className={`badge ${isExpired(c.expiresAt) ? 'expired' : 'muted'}`}>{formatDate(c.expiresAt, lang)}</span> : <span className="badge admin">{t('forever')}</span>}</td>
+            <td data-label={t('lastConnection')}>{lastSeenText(c)}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
           </tr>{expandedClientKey === key && renderClientDetails(c, 6)}</React.Fragment> })}
         </tbody></table>
@@ -1382,12 +1401,12 @@ function App(){
         <div className="panel-head"><div><h2>{t('expiredClients')}</h2><p>{t('expiredClientsSub')}</p></div><span className="badge expired">{pendingRenewalClients.length}</span></div>
         <table className="client-table expired-client-table"><thead><tr><th><button type="button" className={`table-sort ${clientSortField==='name' ? 'active' : ''}`} onClick={()=>setClientSort('name')}>{t('name')}{sortIcon('name')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='server' ? 'active' : ''}`} onClick={()=>setClientSort('server')}>{t('server')}{sortIcon('server')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='status' ? 'active' : ''}`} onClick={()=>setClientSort('status')}>{t('status')}{sortIcon('status')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='expires' ? 'active' : ''}`} onClick={()=>setClientSort('expires')}>{t('expires')}{sortIcon('expires')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='lastConnection' ? 'active' : ''}`} onClick={()=>setClientSort('lastConnection')}>{t('lastConnection')}{sortIcon('lastConnection')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='blockedAt' ? 'active' : ''}`} onClick={()=>setClientSort('blockedAt')}>{t('blockedAt')}{sortIcon('blockedAt')}</button></th><th></th></tr></thead><tbody>
           {sortedPendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''} ${pendingClientKeys.has(key) ? 'client-row-pending' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
-            <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
-            <td>{clientServerName(c)}</td>
-            <td><span className="badge expired">{t('renewalPending')}</span></td>
-            <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('forever')}</span>}</td>
-            <td>{lastSeenText(c)}</td>
-            <td>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
+            <td data-label={t('name')} onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
+            <td data-label={t('server')}>{clientServerName(c)}</td>
+            <td data-label={t('status')}><span className="badge expired">{t('renewalPending')}</span></td>
+            <td data-label={t('expires')}>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('forever')}</span>}</td>
+            <td data-label={t('lastConnection')}>{lastSeenText(c)}</td>
+            <td data-label={t('blockedAt')}>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
           </tr>{expandedClientKey === key && renderClientDetails(c, 7)}</React.Fragment>})}
         </tbody></table>
@@ -1402,12 +1421,12 @@ function App(){
       <section className="card">
         <table className="client-table expired-client-table"><thead><tr><th><button type="button" className={`table-sort ${clientSortField==='name' ? 'active' : ''}`} onClick={()=>setClientSort('name')}>{t('name')}{sortIcon('name')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='server' ? 'active' : ''}`} onClick={()=>setClientSort('server')}>{t('server')}{sortIcon('server')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='status' ? 'active' : ''}`} onClick={()=>setClientSort('status')}>{t('status')}{sortIcon('status')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='expires' ? 'active' : ''}`} onClick={()=>setClientSort('expires')}>{t('expires')}{sortIcon('expires')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='lastConnection' ? 'active' : ''}`} onClick={()=>setClientSort('lastConnection')}>{t('lastConnection')}{sortIcon('lastConnection')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='blockedAt' ? 'active' : ''}`} onClick={()=>setClientSort('blockedAt')}>{t('blockedAt')}{sortIcon('blockedAt')}</button></th><th></th></tr></thead><tbody>
           {sortedPendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''} ${pendingClientKeys.has(key) ? 'client-row-pending' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
-            <td onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
-            <td>{clientServerName(c)}</td>
-            <td><span className="badge expired">{t('renewalPending')}</span></td>
-            <td>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('forever')}</span>}</td>
-            <td>{lastSeenText(c)}</td>
-            <td>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
+            <td data-label={t('name')} onClick={event=>event.stopPropagation()}>{renderClientName(c)}</td>
+            <td data-label={t('server')}>{clientServerName(c)}</td>
+            <td data-label={t('status')}><span className="badge expired">{t('renewalPending')}</span></td>
+            <td data-label={t('expires')}>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('forever')}</span>}</td>
+            <td data-label={t('lastConnection')}>{lastSeenText(c)}</td>
+            <td data-label={t('blockedAt')}>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
           </tr>{expandedClientKey === key && renderClientDetails(c, 7)}</React.Fragment>})}
         </tbody></table>
@@ -1467,12 +1486,13 @@ function App(){
                   const expanded = expandedOrderId === o.id;
                   return <React.Fragment key={o.id}>
                     <tr className={`clickable-row${expanded?' expanded':''}`} onClick={()=>setExpandedOrderId(expanded?'':o.id)}>
-                      <td><strong>{o.login}</strong></td>
-                      <td className="mono">{o.email||'—'}</td>
-                      <td><span className="badge admin">{o.term}</span></td>
-                      <td><span className={`badge ${orderStatusClass(o.status)}`}>{t(ns)}</span></td>
-                      <td className="muted-text">{formatAnyDate(o.created, lang)}</td>
+                      <td data-label={t('orderLogin')}><strong>{o.login}</strong></td>
+                      <td data-label={t('orderEmail')} className="mono">{o.email||'—'}</td>
+                      <td data-label={t('term')}><span className="badge admin">{o.term}</span></td>
+                      <td data-label={t('status')}><span className={`badge ${orderStatusClass(o.status)}`}>{t(ns)}</span></td>
+                      <td data-label={t('created')} className="muted-text">{formatAnyDate(o.created, lang)}</td>
                       <td className="table-actions" onClick={e=>e.stopPropagation()}>
+                        {ns==='pending' && <button className="secondary icon-button" title={t('processOrder')} disabled={processingOrderIds.has(o.id)} onClick={()=>processOrder(o.id).catch(handleError)}><Play size={16}/></button>}
                         <button className="secondary icon-button" onClick={()=>setExpandedOrderId(expanded?'':o.id)}><ChevronDown className={expanded?'rotated':''} size={16}/></button>
                         <button className="danger icon-button" onClick={()=>deleteOrder(o.id)}><Trash2 size={16}/></button>
                       </td>
@@ -1483,8 +1503,17 @@ function App(){
                         <div><span>{t('orderEmail')}</span><strong className="mono">{o.email||'—'}</strong></div>
                         <div><span>{t('term')}</span><strong>{o.term}</strong></div>
                         <div><span>{t('created')}</span><strong>{formatAnyDate(o.created, lang)}</strong></div>
+                        {o.serverName && <div><span>{t('orderServer')}</span><strong>{o.serverName}</strong></div>}
+                        {o.processedAt && <div><span>{t('processedAt')}</span><strong>{formatAnyDate(o.processedAt, lang)}</strong></div>}
+                        {o.clientPublicKey && <div><span>{t('client')}</span><strong className="mono" style={{fontSize:'0.75em',wordBreak:'break-all'}}>{o.clientPublicKey}</strong></div>}
                       </div>
                       <div className="detail-actions">
+                        {ns==='pending' && <button disabled={processingOrderIds.has(o.id)} onClick={()=>processOrder(o.id).catch(handleError)}>
+                          <Play size={16}/>{processingOrderIds.has(o.id)?t('processing'):t('processOrder')}
+                        </button>}
+                        {ns==='issued' && o.clientPublicKey && <button className="secondary" onClick={()=>downloadClientConfig(o.clientPublicKey, o.login||'client', o.serverId||activeServerId).catch(handleError)}>
+                          <Download size={16}/>{t('download')}
+                        </button>}
                         <select className={`order-status-select order-status-${ns}`} value={ns} onChange={e=>updateOrder(o.id,e.target.value)} aria-label={t('status')}>
                           {orderStatuses.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
                         </select>
@@ -1530,19 +1559,19 @@ function App(){
       <section className="card">
         <table className="server-table"><thead><tr><th>{t('title')}</th><th>{t('endpoint')}</th><th>{t('token')}</th><th>{t('status')}</th><th>{t('activeClients')}</th><th></th></tr></thead><tbody>
           {(()=>{ const server = {id:'all', name:t('allServers'), baseUrl:'', kind:'aggregate', status:'online'}; return <React.Fragment key="all"><tr className={`clickable-row ${activeServerId==='all'?'selected-row':''} ${expandedServerId === 'all' ? 'expanded' : ''}`} onClick={()=>setExpandedServerId(expandedServerId === 'all' ? '' : 'all')}>
-            <td><strong>{t('allServers')}</strong>{activeServerId==='all' && <small>{t('activeServer')}</small>}</td>
-            <td className="mono">—</td>
-            <td><span className="badge ok">{t('set')}</span></td>
-            <td><span className="badge ok">{t('active')}</span></td>
-            <td><span className={`badge ${serverUsageClass(server)}`}>{serverUsageText(server)}</span></td>
+            <td data-label={t('title')}><strong>{t('allServers')}</strong>{activeServerId==='all' && <small>{t('activeServer')}</small>}</td>
+            <td data-label={t('endpoint')} className="mono">—</td>
+            <td data-label={t('token')}><span className="badge ok">{t('set')}</span></td>
+            <td data-label={t('status')}><span className="badge ok">{t('active')}</span></td>
+            <td data-label={t('activeClients')}><span className={`badge ${serverUsageClass(server)}`}>{serverUsageText(server)}</span></td>
             <td className="table-actions"><button className="secondary icon-button" title={t('details')} onClick={(event)=>{ event.stopPropagation(); setExpandedServerId(expandedServerId === 'all' ? '' : 'all'); }}><ChevronDown className={expandedServerId === 'all' ? 'rotated' : ''} size={16}/></button><button className="secondary" onClick={(event)=>{ event.stopPropagation(); selectServer('all'); }}>{t('select')}</button></td>
           </tr>{expandedServerId === 'all' && renderServerDetails(server, 6)}</React.Fragment>; })()}
           {servers.map(s=><React.Fragment key={s.id}><tr className={`clickable-row ${s.id===activeServerId?'selected-row':''} ${expandedServerId === s.id ? 'expanded' : ''}`} onClick={()=>setExpandedServerId(expandedServerId === s.id ? '' : s.id)}>
-            <td><strong>{s.name}</strong>{s.id===activeServerId && <small>{t('activeServer')}</small>}</td>
-            <td className="mono">{s.kind === 'local' ? t('localServer') : s.baseUrl}</td>
-            <td>{s.kind === 'local' ? <span className="badge ok">{t('set')}</span> : (s.token ? <span className="badge ok">{t('set')}</span> : <span className="badge muted">{t('notSet')}</span>)}</td>
-            <td>{serverConnection(s)?<span className="badge ok">{t('active')}</span>:<span className="badge warn">{t('inactiveEdit')}</span>}</td>
-            <td><span className={`badge ${serverUsageClass(s)}`}>{serverUsageText(s)}</span></td>
+            <td data-label={t('title')}><strong>{s.name}</strong>{s.id===activeServerId && <small>{t('activeServer')}</small>}</td>
+            <td data-label={t('endpoint')} className="mono">{s.kind === 'local' ? t('localServer') : s.baseUrl}</td>
+            <td data-label={t('token')}>{s.kind === 'local' ? <span className="badge ok">{t('set')}</span> : (s.token ? <span className="badge ok">{t('set')}</span> : <span className="badge muted">{t('notSet')}</span>)}</td>
+            <td data-label={t('status')}>{serverConnection(s)?<span className="badge ok">{t('active')}</span>:<span className="badge warn">{t('inactiveEdit')}</span>}</td>
+            <td data-label={t('activeClients')}><span className={`badge ${serverUsageClass(s)}`}>{serverUsageText(s)}</span></td>
             <td className="table-actions"><button className="secondary icon-button" title={t('details')} onClick={(event)=>{ event.stopPropagation(); setExpandedServerId(expandedServerId === s.id ? '' : s.id); }}><ChevronDown className={expandedServerId === s.id ? 'rotated' : ''} size={16}/></button><button className="secondary" onClick={(event)=>{ event.stopPropagation(); selectServer(s.id); }}>{t('select')}</button><button className="secondary icon-button" title={t('edit')} onClick={(event)=>{ event.stopPropagation(); editServer(s); }}><Pencil size={16}/></button>{s.id !== 'local' && <button className="danger icon-button" title={t('deleteServer')} onClick={(event)=>{ event.stopPropagation(); deleteServer(s.id); }}><Trash2 size={16}/></button>}</td>
           </tr>{expandedServerId === s.id && renderServerDetails(s, 6)}</React.Fragment>)}
         </tbody></table>

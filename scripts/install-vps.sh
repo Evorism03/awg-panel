@@ -161,21 +161,42 @@ detect_udp_port() {
   docker port "$container" 2>/dev/null | awk -F: '/udp/ {print $NF; exit}' || true
 }
 
+_valid_ipv4() { printf '%s' "$1" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; }
+
 detect_public_ip() {
   if [ -n "${SERVER_IP:-}" ]; then printf '%s' "$SERVER_IP"; return; fi
   local ip=""
-  # Try hostname -I first
-  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
-  # Fallback: ip route
-  if [ -z "$ip" ]; then
-    ip="$(ip route get 1.1.1.1 2>/dev/null | awk '/src/{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1);exit}}')"
-  fi
-  # Fallback: external service (only if still empty)
-  if [ -z "$ip" ] && have_cmd curl; then
-    ip="$(curl -s --connect-timeout 3 --max-time 5 https://ifconfig.me 2>/dev/null || true)"
+  # External services first — they return the real internet-facing IP,
+  # not the LAN address that hostname -I / ip route would show on NAT setups.
+  if have_cmd curl; then
+    ip="$(curl -s --connect-timeout 4 --max-time 6 https://api.ipify.org 2>/dev/null | tr -d '[:space:]' || true)"
+    _valid_ipv4 "$ip" || ip=""
+    if [ -z "$ip" ]; then
+      ip="$(curl -s --connect-timeout 4 --max-time 6 https://ifconfig.me 2>/dev/null | tr -d '[:space:]' || true)"
+      _valid_ipv4 "$ip" || ip=""
+    fi
+    if [ -z "$ip" ]; then
+      ip="$(curl -s --connect-timeout 4 --max-time 6 https://icanhazip.com 2>/dev/null | tr -d '[:space:]' || true)"
+      _valid_ipv4 "$ip" || ip=""
+    fi
   fi
   if [ -z "$ip" ] && have_cmd wget; then
-    ip="$(wget -qO- --timeout=5 https://ifconfig.me 2>/dev/null || true)"
+    ip="$(wget -qO- --timeout=6 https://api.ipify.org 2>/dev/null | tr -d '[:space:]' || true)"
+    _valid_ipv4 "$ip" || ip=""
+    if [ -z "$ip" ]; then
+      ip="$(wget -qO- --timeout=6 https://ifconfig.me 2>/dev/null | tr -d '[:space:]' || true)"
+      _valid_ipv4 "$ip" || ip=""
+    fi
+  fi
+  # Fallback: source IP from routing table (works on direct-attach VPS)
+  if [ -z "$ip" ]; then
+    ip="$(ip route get 1.1.1.1 2>/dev/null | awk '/src/{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1);exit}}')"
+    _valid_ipv4 "$ip" || ip=""
+  fi
+  # Last resort: first IP from hostname -I
+  if [ -z "$ip" ]; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    _valid_ipv4 "$ip" || ip=""
   fi
   printf '%s' "${ip:-127.0.0.1}"
 }

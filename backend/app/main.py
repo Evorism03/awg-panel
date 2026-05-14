@@ -488,6 +488,89 @@ def list_servers(include_local: bool = True) -> list[dict]:
     return result
 
 
+def create_client_local(name: str, term: str, contact: str) -> dict:
+    text = read_cfg()
+    interface = parse_interface(text)
+    peers = parse_peers(text)
+    private_key = awg(["genkey"])
+    public_key = awg(["pubkey"], input_text=private_key)
+    expired = load_expired_clients()
+    expired.pop(public_key, None)
+    save_expired_clients(expired)
+    psk = awg(["genpsk"])
+    ip = next_ip(interface.get("Address", "10.8.1.1/24"), peers)
+    expires_at = expiration_date(term)
+    expires_line = f"# Expires: {expires_at}\n" if expires_at else ""
+    client_id = secrets.token_hex(4)
+    peer_block = f"\n\n[Peer]\n# Name: {name}\n# ID: {client_id}\n{expires_line}PublicKey = {public_key}\nPresharedKey = {psk}\nAllowedIPs = {ip}/32\n"
+    write_cfg(text.rstrip() + peer_block)
+    reload_async()
+    meta = load_clients_meta()
+    meta[public_key] = {"id": client_id, "contact": contact.strip()}
+    save_clients_meta(meta)
+    server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
+    cfg = f"# Client ID: {client_id}\n" + client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
+    store_client_export(public_key, name, cfg)
+    return {"name": name, "publicKey": public_key, "clientId": client_id,
+            "contact": contact.strip(), "address": f"{ip}/32", "expiresAt": expires_at, "config": cfg}
+
+
+def count_server_active_clients(server: dict) -> int:
+    try:
+        if server.get("kind") == "local" or server.get("id") == LOCAL_SERVER_ID:
+            return len(parse_peers(read_cfg()))
+        payload = panel_json(server, "GET", "/clients", timeout=5)
+        return len([c for c in payload.get("clients", []) if not c.get("blocked")])
+    except Exception:
+        return -1
+
+
+def find_available_server() -> dict | None:
+    candidates = []
+    for server in list_servers(include_local=True):
+        if server.get("kind") != "local" and server.get("status") != "online":
+            continue
+        max_users = normalize_max_users(server.get("maxUsers"))
+        count = count_server_active_clients(server)
+        if count < 0:
+            continue
+        available = (max_users - count) if max_users > 0 else 999999
+        if available > 0:
+            candidates.append((available, server))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: -x[0])
+    return candidates[0][1]
+
+
+def process_order_internal(order: dict) -> dict:
+    term_code = normalize_term(order.get("term", ""))
+    name = (order.get("login") or f"order-{order['id'][:8]}").strip()
+    contact = (order.get("email") or "").strip()
+    server = find_available_server()
+    if server is None:
+        return {**order, "status": "pending", "processingError": "No server with available slots"}
+    is_local = server.get("kind") == "local" or server.get("id") == LOCAL_SERVER_ID
+    try:
+        if is_local:
+            result = create_client_local(name, term_code, contact)
+        else:
+            result = panel_json(server, "POST", "/clients",
+                                payload={"name": name, "term": term_code, "contact": contact},
+                                timeout=20)
+    except Exception as e:
+        return {**order, "status": "pending", "processingError": str(e)}
+    return {
+        **order,
+        "status": "issued",
+        "clientPublicKey": result.get("publicKey", ""),
+        "clientId": result.get("clientId", ""),
+        "serverId": server.get("id", LOCAL_SERVER_ID),
+        "serverName": server.get("name", LOCAL_SERVER_NAME),
+        "processedAt": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
 def local_clients_payload() -> dict:
     local_name = local_server_identity()["name"]
     expired_clients = attach_client_source(enforce_expired_clients(), LOCAL_SERVER_ID, local_name)
@@ -584,7 +667,21 @@ def get_server(server_id: str | None) -> dict | None:
     raise HTTPException(status_code=404, detail="Server not found")
 
 
-def panel_request(server: dict, method: str, path: str, body: bytes | None = None, content_type: str = "application/json") -> tuple[int, bytes, str]:
+TERM_DISPLAY_MAP: dict[str, str] = {
+    "1 день": "1d",  "3 дня": "3d",  "7 дней": "7d",  "15 дней": "15d",
+    "1 месяц": "1m", "3 месяца": "3m", "6 месяцев": "6m", "1 год": "1y",
+    "1 day": "1d",   "3 days": "3d",  "7 days": "7d",  "15 days": "15d",
+    "1 month": "1m", "3 months": "3m", "6 months": "6m", "1 year": "1y",
+    "1d": "1d", "3d": "3d", "7d": "7d", "15d": "15d",
+    "1m": "1m", "3m": "3m", "6m": "6m", "1y": "1y",
+    "admin": "admin", "forever": "forever",
+}
+
+def normalize_term(term: str) -> str:
+    return TERM_DISPLAY_MAP.get(term.strip(), "1m")
+
+
+def panel_request(server: dict, method: str, path: str, body: bytes | None = None, content_type: str = "application/json", timeout: int = 15) -> tuple[int, bytes, str]:
     headers = {}
     token = server.get("token", "").strip()
     if token:
@@ -594,7 +691,7 @@ def panel_request(server: dict, method: str, path: str, body: bytes | None = Non
     url = f"{server['baseUrl'].rstrip('/')}/api{path}"
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status, resp.read(), resp.headers.get_content_type()
     except HTTPError as e:
         return e.code, e.read(), e.headers.get_content_type() if e.headers else "text/plain"
@@ -602,9 +699,9 @@ def panel_request(server: dict, method: str, path: str, body: bytes | None = Non
         raise HTTPException(status_code=502, detail=f"Panel unreachable: {e.reason}")
 
 
-def panel_json(server: dict, method: str, path: str, payload: dict | None = None):
+def panel_json(server: dict, method: str, path: str, payload: dict | None = None, timeout: int = 15):
     body = None if payload is None else json.dumps(payload).encode("utf-8")
-    status, raw, content_type = panel_request(server, method, path, body=body)
+    status, raw, content_type = panel_request(server, method, path, body=body, timeout=timeout)
     text = raw.decode("utf-8", errors="replace") if raw else ""
     if status >= 400:
         if status in {401, 403}:
@@ -1077,24 +1174,46 @@ def create_order(body: OrderCreate):
     with data_lock:
         login = body.login.strip()
         email = body.email.strip()
-        term = body.term.strip() or "1 месяц"
+        term = body.term.strip() or "1m"
         if not login:
             raise HTTPException(400, "Login is required")
         if not email:
             raise HTTPException(400, "Email is required")
-        order = {
+        order: dict = {
             "id": secrets.token_hex(8),
             "login": login,
             "email": email,
             "term": term,
-            "status": "active",
+            "status": "pending",
             "created": datetime.now().isoformat(timespec="seconds"),
             "createdAt": datetime.now().isoformat(timespec="seconds"),
         }
+        order = process_order_internal(order)
         orders = load_orders()
         orders.insert(0, order)
         save_orders(orders)
         return {"order": order}
+
+
+@app.post("/api/orders/{order_id}/process")
+def process_order_endpoint(
+    order_id: str,
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+):
+    auth(authorization, awg_panel_session)
+    with data_lock:
+        orders = load_orders()
+        for index, order in enumerate(orders):
+            if order.get("id") != order_id:
+                continue
+            if order.get("status") == "issued":
+                raise HTTPException(400, "Order already issued")
+            updated = process_order_internal(order)
+            orders[index] = updated
+            save_orders(orders)
+            return {"order": updated}
+        raise HTTPException(404, "Order not found")
 
 
 @app.patch("/api/orders/{order_id}")
