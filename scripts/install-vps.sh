@@ -17,16 +17,13 @@ fi
 APP_NAME="awg-panel"
 INSTALL_DIR="${INSTALL_DIR:-/opt/awg-panel}"
 PROJECT_SRC="${PROJECT_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-INSTALL_MODE="${INSTALL_MODE:-panel}"
+case "${INSTALL_MODE:-panel}" in
+  agent|api|headless) INSTALL_MODE="agent" ;;
+  *) INSTALL_MODE="panel" ;;
+esac
 PANEL_HTTP_BIND="${PANEL_HTTP_BIND:-0.0.0.0}"
 PANEL_HTTP_PORT="${PANEL_HTTP_PORT:-8080}"
-if [ "$INSTALL_MODE" = "agent" ] || [ "$INSTALL_MODE" = "api" ] || [ "$INSTALL_MODE" = "headless" ]; then
-  INSTALL_MODE="agent"
-  BACKEND_BIND="${BACKEND_BIND:-0.0.0.0}"
-else
-  INSTALL_MODE="panel"
-  BACKEND_BIND="${BACKEND_BIND:-127.0.0.1}"
-fi
+BACKEND_BIND="${BACKEND_BIND:-}"
 BACKEND_PORT="${BACKEND_PORT:-8090}"
 NETWORK_NAME="${NETWORK_NAME:-awg-panel-net}"
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-awg-admin-backend}"
@@ -39,6 +36,14 @@ SKIP_DOCKER_INSTALL="${SKIP_DOCKER_INSTALL:-0}"
 FORCE_PORT="${FORCE_PORT:-0}"
 
 frontend_enabled() { [ "$INSTALL_MODE" = "panel" ]; }
+
+normalize_mode() {
+  if [ "$INSTALL_MODE" = "agent" ]; then
+    : "${BACKEND_BIND:=0.0.0.0}"
+  else
+    : "${BACKEND_BIND:=127.0.0.1}"
+  fi
+}
 
 # ─── Logging ─────────────────────────────────────────────────────────────────
 log()      { printf "${C_GREEN}▶${C_RESET} ${C_BOLD}%s${C_RESET}\n" "$*"; }
@@ -427,11 +432,87 @@ print_summary() {
   printf "${C_DIM}Installer did NOT modify system nginx, ports 80/443, or existing sites.${C_RESET}\n\n"
 }
 
+# ─── Interactive wizard ───────────────────────────────────────────────────────
+wizard() {
+  [ -t 0 ] || return 0
+  [ "${INTERACTIVE:-1}" = "0" ] && return 0
+
+  step "Configuration wizard"
+  printf "${C_DIM}Press Enter to accept the default shown in brackets.${C_RESET}\n\n"
+
+  local _ans
+
+  # ── Install mode ──────────────────────────────────────────────────────────
+  printf "${C_BOLD}Install mode:${C_RESET}\n"
+  printf "  ${C_CYAN}1${C_RESET}) Full panel  (frontend + backend)\n"
+  printf "  ${C_CYAN}2${C_RESET}) Agent only  (backend API, no frontend)\n"
+  local _mode_default=1
+  [ "$INSTALL_MODE" = "agent" ] && _mode_default=2
+  printf "Choice [${C_CYAN}%s${C_RESET}]: " "$_mode_default"
+  read -r _ans
+  case "${_ans:-$_mode_default}" in
+    2) INSTALL_MODE="agent" ;;
+    *) INSTALL_MODE="panel" ;;
+  esac
+
+  if [ "$INSTALL_MODE" = "agent" ]; then
+    BACKEND_BIND="${BACKEND_BIND:-0.0.0.0}"
+  else
+    BACKEND_BIND="${BACKEND_BIND:-127.0.0.1}"
+  fi
+
+  printf "\n"
+
+  # ── Server public IP ──────────────────────────────────────────────────────
+  local _detected_ip
+  _detected_ip="$(detect_public_ip)"
+  local _default_ip="${SERVER_IP:-$_detected_ip}"
+  printf "${C_BOLD}Server public IP${C_RESET}     [${C_CYAN}%s${C_RESET}]: " "$_default_ip"
+  read -r _ans
+  SERVER_IP="${_ans:-$_default_ip}"
+
+  # ── Port(s) ───────────────────────────────────────────────────────────────
+  if [ "$INSTALL_MODE" = "panel" ]; then
+    printf "${C_BOLD}Panel HTTP port${C_RESET}      [${C_CYAN}%s${C_RESET}]: " "$PANEL_HTTP_PORT"
+    read -r _ans
+    PANEL_HTTP_PORT="${_ans:-$PANEL_HTTP_PORT}"
+  else
+    printf "${C_BOLD}Backend API port${C_RESET}     [${C_CYAN}%s${C_RESET}]: " "$BACKEND_PORT"
+    read -r _ans
+    BACKEND_PORT="${_ans:-$BACKEND_PORT}"
+
+    printf "${C_DIM}  0.0.0.0 = доступен из сети, 127.0.0.1 = только локально${C_RESET}\n"
+    printf "${C_BOLD}Backend bind${C_RESET}         [${C_CYAN}%s${C_RESET}]: " "$BACKEND_BIND"
+    read -r _ans
+    BACKEND_BIND="${_ans:-$BACKEND_BIND}"
+  fi
+
+  # ── AmneziaWG container ───────────────────────────────────────────────────
+  local _detected_container
+  _detected_container="$(detect_awg_container || true)"
+  local _default_container="${AWG_DOCKER_CONTAINER:-${_detected_container:-amnezia-awg}}"
+  printf "${C_BOLD}AmneziaWG container${C_RESET}  [${C_CYAN}%s${C_RESET}]: " "$_default_container"
+  read -r _ans
+  AWG_DOCKER_CONTAINER="${_ans:-$_default_container}"
+
+  # ── AmneziaWG UDP port ────────────────────────────────────────────────────
+  local _detected_port=""
+  [ -n "$AWG_DOCKER_CONTAINER" ] && _detected_port="$(detect_udp_port "$AWG_DOCKER_CONTAINER" || true)"
+  local _default_wgport="${AWG_PORT:-${_detected_port:-51820}}"
+  printf "${C_BOLD}AmneziaWG UDP port${C_RESET}   [${C_CYAN}%s${C_RESET}]: " "$_default_wgport"
+  read -r _ans
+  AWG_PORT="${_ans:-$_default_wgport}"
+
+  printf "\n"
+}
+
 # ─── Entrypoint ───────────────────────────────────────────────────────────────
 main() {
   printf "\n${C_BOLD}AmneziaWG Panel Installer${C_RESET}\n"
   require_root
   install_docker_if_missing
+  wizard
+  normalize_mode
   check_ports
   copy_project
   write_env_if_missing
