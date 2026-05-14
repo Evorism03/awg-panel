@@ -104,6 +104,9 @@ class OrderCreate(BaseModel):
 class OrderUpdate(BaseModel):
     status: str | None = None
 
+class ClientRenew(BaseModel):
+    term: str = "1m"
+
 def auth(authorization: str | None, awg_panel_session: str | None):
     bearer_ok = authorization == f"Bearer {ADMIN_TOKEN}"
     cookie_ok = awg_panel_session == ADMIN_TOKEN
@@ -1194,7 +1197,7 @@ AllowedIPs = {ip}/32
         meta[public_key] = {"id": client_id, "contact": body.contact.strip()}
         save_clients_meta(meta)
         server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
-        cfg = client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
+        cfg = f"# Client ID: {client_id}\n" + client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
         store_client_export(public_key, name, cfg)
         return {
             "name": name,
@@ -1401,4 +1404,97 @@ def client_config_export(
     cfg = load_client_export(public_key)
     if cfg is None:
         raise HTTPException(status_code=404, detail="Client config not found on server")
+    return Response(content=cfg, media_type="text/plain; charset=utf-8")
+
+
+# ─── Renew expired client ─────────────────────────────────────────────────────
+@app.post("/api/clients/{public_key}/renew")
+def renew_client(
+    public_key: str,
+    body: ClientRenew,
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    server = get_server(server_id)
+    if server is not None:
+        return panel_json(server, "POST", f"/clients/{quote(public_key.strip(), safe='')}/renew", payload=body.model_dump())
+    with data_lock:
+        target = public_key.strip()
+        expired = load_expired_clients()
+        if target not in expired:
+            raise HTTPException(404, "Client not in expired list")
+        client = expired[target]
+        raw = client.get("raw", "").strip()
+        if not raw:
+            raise HTTPException(400, "No stored peer block for this client")
+        new_expiry = expiration_date(body.term)
+        if re.search(r"(?m)^#\s*Expires:.*$", raw):
+            if new_expiry:
+                raw = re.sub(r"(?m)^#\s*Expires:.*$", f"# Expires: {new_expiry}", raw)
+            else:
+                raw = re.sub(r"(?m)^#\s*Expires:.*\n?", "", raw)
+        elif new_expiry:
+            raw = re.sub(r"(?m)^\[Peer\]", f"[Peer]\n# Expires: {new_expiry}", raw, count=1)
+        text = read_cfg()
+        write_cfg(text.rstrip() + "\n\n" + raw + "\n")
+        del expired[target]
+        save_expired_clients(expired)
+        reload_async()
+        return {"ok": True, "publicKey": target, "expiresAt": new_expiry, "name": client.get("name", "")}
+
+
+# ─── Client portal (public, no auth) ─────────────────────────────────────────
+@app.get("/api/portal/lookup")
+def portal_lookup(contact: str = Query(...)):
+    contact_norm = contact.strip().lower()
+    if not contact_norm:
+        raise HTTPException(400, "Contact is required")
+    meta = load_clients_meta()
+    matching = {pk: m for pk, m in meta.items() if m.get("contact", "").strip().lower() == contact_norm}
+    if not matching:
+        return {"clients": []}
+    peers_by_key = {p.get("PublicKey", "").strip(): p for p in parse_peers(read_cfg())}
+    expired = load_expired_clients()
+    result = []
+    for pk, m in matching.items():
+        peer = peers_by_key.get(pk)
+        if peer:
+            result.append({
+                "name": peer.get("name", ""),
+                "clientId": m.get("id", ""),
+                "status": "active",
+                "expiresAt": peer.get("expiresAt", ""),
+                "hasConfig": os.path.exists(client_export_path(pk)),
+            })
+        elif pk in expired:
+            exp = expired[pk]
+            result.append({
+                "name": exp.get("name", ""),
+                "clientId": m.get("id", ""),
+                "status": "expired",
+                "expiresAt": exp.get("expiresAt", ""),
+                "hasConfig": os.path.exists(client_export_path(pk)),
+            })
+    return {"clients": result}
+
+
+@app.get("/api/portal/config")
+def portal_config_download(contact: str = Query(...), client_id: str = Query(...)):
+    contact_norm = contact.strip().lower()
+    client_id = client_id.strip()
+    if not contact_norm or not client_id:
+        raise HTTPException(400, "Contact and client ID are required")
+    meta = load_clients_meta()
+    pk = next(
+        (key for key, m in meta.items()
+         if m.get("contact", "").strip().lower() == contact_norm and m.get("id", "") == client_id),
+        None,
+    )
+    if not pk:
+        raise HTTPException(404, "Client not found")
+    cfg = load_client_export(pk)
+    if not cfg:
+        raise HTTPException(404, "Config not available. Contact your administrator.")
     return Response(content=cfg, media_type="text/plain; charset=utf-8")

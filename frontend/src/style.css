@@ -52,6 +52,20 @@ main.public-page{max-width:1280px;padding:24px 24px 36px}
 .public-plans button{justify-content:flex-start;min-height:64px;text-align:left;white-space:normal}
 .public-plans button.active{background:var(--accent);box-shadow:0 0 0 1px rgba(255,255,255,.12) inset,0 8px 24px var(--accent-glow)}
 .public-admin-link{align-self:flex-start}
+.public-hero-actions{display:flex;gap:10px;align-items:flex-start;flex-shrink:0}
+
+/* ─── Portal ─── */
+.portal-layout{display:flex;flex-direction:column;gap:16px;max-width:640px}
+.portal-search-card{margin:0}
+.portal-empty{text-align:center;color:var(--muted);padding:24px}
+.portal-client-card{display:flex;flex-direction:column;gap:12px}
+.portal-client-header{display:flex;align-items:center;gap:10px;font-size:16px}
+.portal-client-header strong{flex:1}
+.portal-client-meta{font-size:14px;color:var(--muted)}.portal-client-meta strong,.portal-client-meta code{color:var(--text);font-size:14px}
+.portal-id-form{display:flex;flex-direction:column;gap:8px}.portal-id-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}.portal-id-form small{font-weight:400;color:var(--muted);font-size:12px}.portal-id-form input{margin-top:2px}
+.portal-config-actions{display:flex;gap:10px;flex-wrap:wrap}
+.portal-qr{display:flex;justify-content:center;padding:12px 0;background:var(--panel-2);border-radius:var(--radius-sm)}
+.portal-no-config{font-size:13px;color:var(--muted);margin:0}
 
 /* ─── Auth ─── */
 .auth-page{min-height:100vh;display:grid;place-items:center;padding:16px}

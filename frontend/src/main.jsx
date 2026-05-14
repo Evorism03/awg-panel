@@ -1,7 +1,16 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Activity, ArrowDown, ArrowUp, ArrowUpDown, Check, CheckCircle2, ChevronDown, Clipboard, Clock3, CreditCard, Download, Home, Loader2, LogOut, Pencil, Plus, RefreshCw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
+import {Activity, ArrowDown, ArrowUp, ArrowUpDown, Check, CheckCircle2, ChevronDown, Clipboard, Clock3, CreditCard, Download, Home, Loader2, LogOut, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
+import QRCodeLib from 'qrcode';
 import './style.css';
+
+const QRCanvas = ({text, size=220}) => {
+  const ref = useRef(null);
+  useEffect(()=>{
+    if(ref.current && text) QRCodeLib.toCanvas(ref.current, text, {width:size, margin:1, color:{dark:'#000',light:'#fff'}}, ()=>{});
+  },[text,size]);
+  return <canvas ref={ref} style={{display:'block',margin:'0 auto',borderRadius:8}} />;
+};
 
 const api = async (path, options={}) => {
   const res = await fetch(path, { ...options, credentials:'same-origin', headers: { 'Content-Type':'application/json', ...(options.headers||{}) }});
@@ -54,6 +63,8 @@ const dict = {
     notSet:'Не задан', active:'Активен', inactiveEdit:'Неактивен · редактировать', select:'Выбрать', edit:'Редактировать', activeServer:'Активный сервер', dumpTitle:'Активный сервер: awg dump',
     noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.', details:'Подробнее', lastSeen:'Последнее подключение', never:'Никогда', download:'Скачать', copyConfig:'Скопировать конфиг', received:'Загрузка', sent:'Отдача', createdClients:'Созданных клиентов',
     contact:'Контакт', contactPlaceholder:'Email или телефон', clientId:'ID клиента', editContact:'Изменить контакт', saveContact:'Сохранить контакт',
+    renew:'Продлить', renewClient:'Продлить подписку', renewConfirm:'Выберите срок продления', renewSuccess:'Подписка продлена',
+    portal:'Личный кабинет', portalTitle:'Проверить подписку', portalDesc:'Введите email или телефон, чтобы найти ваши подписки', portalSearch:'Найти подписки', portalContact:'Email или телефон', portalNotFound:'Подписки не найдены', portalActive:'Активна', portalExpired:'Истекла', portalExpires:'Действует до', portalGetConfig:'Скачать конфиг', portalShowQr:'Показать QR', portalClientId:'Введите ID клиента', portalClientIdDesc:'ID указан в вашем конфиг-файле в строке # Client ID:', portalConfigNotAvail:'Конфиг недоступен — обратитесь к администратору', portalEnterIdFirst:'Введите Client ID для получения конфига', portalCabinet:'Кабинет',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Текущая панель', deleteServer:'Удалить сервер?',
     sortBy:'Сортировка', sortNameAsc:'Имя A-Z', sortNameDesc:'Имя Z-A', sortCreatedDesc:'Дата создания, новые', sortCreatedAsc:'Дата создания, старые', sortLastSeenDesc:'Последнее подключение, новые', sortLastSeenAsc:'Последнее подключение, старые', selectAll:'Выбрать все', clearSelection:'Снять выбор', deleteSelected:'Удалить выбранные', selectedClients:'Выбрано клиентов', createdOnly:'Дата создания', lastConnection:'Последнее подключение', deleting:'Удаление', deleted:'Удалено', bulkActions:'Действия группы', bulkReady:'Можно удалять выбранных', purchase:'Покупка', purchaseSub:'', purchaseLead:'', purchaseOrderSub:'', purchaseAction:'', adminPanel:'Админ-панель'
   },
@@ -82,6 +93,8 @@ const dict = {
     notSet:'Not set', active:'Active', inactiveEdit:'Inactive · edit', select:'Select', edit:'Edit', activeServer:'Active server', dumpTitle:'Active server: awg dump',
     noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.', details:'Details', lastSeen:'Last connected', never:'Never', download:'Download', copyConfig:'Copy config', received:'Received', sent:'Sent', createdClients:'Created clients',
     contact:'Contact', contactPlaceholder:'Email or phone', clientId:'Client ID', editContact:'Edit contact', saveContact:'Save contact',
+    renew:'Renew', renewClient:'Renew subscription', renewConfirm:'Select renewal term', renewSuccess:'Subscription renewed',
+    portal:'My Account', portalTitle:'Check your subscription', portalDesc:'Enter your email or phone to find your subscriptions', portalSearch:'Find subscriptions', portalContact:'Email or phone', portalNotFound:'No subscriptions found', portalActive:'Active', portalExpired:'Expired', portalExpires:'Valid until', portalGetConfig:'Download config', portalShowQr:'Show QR', portalClientId:'Enter Client ID', portalClientIdDesc:'Your Client ID is in your config file on the line # Client ID:', portalConfigNotAvail:'Config not available — contact your administrator', portalEnterIdFirst:'Enter Client ID to get config', portalCabinet:'Account',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Current panel', deleteServer:'Delete server?',
     sortBy:'Sort', sortNameAsc:'Name A-Z', sortNameDesc:'Name Z-A', sortCreatedDesc:'Created newest', sortCreatedAsc:'Created oldest', sortLastSeenDesc:'Last connected newest', sortLastSeenAsc:'Last connected oldest', selectAll:'Select all', clearSelection:'Clear selection', deleteSelected:'Delete selected', selectedClients:'Selected clients', createdOnly:'Created date', lastConnection:'Last connected', deleting:'Deleting', deleted:'Deleted', bulkActions:'Group actions', bulkReady:'Ready to delete selected', purchase:'Purchase', purchaseSub:'', purchaseLead:'', purchaseOrderSub:'', purchaseAction:'', adminPanel:'Admin panel'
   }
@@ -185,6 +198,7 @@ function chartDays(points) {
 function App(){
   const [pathname,setPathname]=useState(()=>window.location.pathname || '/');
   const isAdminRoute = pathname.startsWith('/admin');
+  const isPortalRoute = pathname.startsWith('/portal');
   const navigate=(to)=>{
     if ((window.location.pathname || '/') === to) return;
     window.history.pushState({}, '', to);
@@ -241,6 +255,14 @@ function App(){
   const [editingClientName,setEditingClientName]=useState('');
   const [editingContactKey,setEditingContactKey]=useState('');
   const [editingContactValue,setEditingContactValue]=useState('');
+  const [renewingClientKey,setRenewingClientKey]=useState('');
+  const [renewTerm,setRenewTerm]=useState('1m');
+  const [portalContact,setPortalContact]=useState('');
+  const [portalClients,setPortalClients]=useState(null);
+  const [portalLoading,setPortalLoading]=useState(false);
+  const [portalClientIds,setPortalClientIds]=useState({});
+  const [portalConfigs,setPortalConfigs]=useState({});
+  const [portalQrVisible,setPortalQrVisible]=useState({});
   const [expandedClientKey,setExpandedClientKey]=useState('');
   const [expandedServerId,setExpandedServerId]=useState('');
   const [expandedOrderId,setExpandedOrderId]=useState('');
@@ -481,6 +503,39 @@ function App(){
     await api(`/api/clients?${params.toString()}`,{method:'PATCH',body:JSON.stringify({contact:editingContactValue})});
     cancelEditContact();
     await loadClients(serverId);
+  };
+  const renewClient=async(client)=>{
+    const serverId=client.serverId||activeServerId;
+    const key=clientRowKey(client);
+    setClientPending(key,true);
+    try{
+      await api(`/api/clients/${encodeURIComponent(client.PublicKey)}/renew?server_id=${encodeURIComponent(serverId)}`,{method:'POST',body:JSON.stringify({term:renewTerm})});
+      setRenewingClientKey('');
+      setNotice(t('renewSuccess'));
+      setTimeout(()=>setNotice(''),2500);
+      await loadClients(serverId);
+    }finally{ setClientPending(key,false); }
+  };
+  const portalLookup=async()=>{
+    if(!portalContact.trim()) return;
+    setPortalLoading(true);
+    setPortalClients(null);
+    try{
+      const r=await fetch(`/api/portal/lookup?contact=${encodeURIComponent(portalContact.trim())}`);
+      const j=await r.json();
+      setPortalClients(j.clients||[]);
+    }catch{ setPortalClients([]); }
+    finally{ setPortalLoading(false); }
+  };
+  const portalFetchConfig=async(idx)=>{
+    const cid=(portalClientIds[idx]||'').trim();
+    if(!cid){ alert(t('portalEnterIdFirst')); return; }
+    try{
+      const r=await fetch(`/api/portal/config?contact=${encodeURIComponent(portalContact.trim())}&client_id=${encodeURIComponent(cid)}`);
+      if(!r.ok){ alert(t('portalConfigNotAvail')); return; }
+      const text=await r.text();
+      setPortalConfigs(prev=>({...prev,[idx]:text}));
+    }catch{ alert(t('portalConfigNotAvail')); }
   };
   const renameClient=async(client)=>{
     const nextName = editingClientName.trim();
@@ -1057,6 +1112,14 @@ function App(){
         <div className="detail-actions">
           <button className="secondary" onClick={()=>copyClientConfig(client.PublicKey, client.serverId).catch(handleError)}><Clipboard size={16}/>{t('copyConfig')}</button>
           <button className="secondary" onClick={()=>downloadClientConfig(client.PublicKey, client.name||'client', client.serverId).catch(handleError)}><Download size={16}/>{t('download')}</button>
+          {client.blocked && renewingClientKey!==clientRowKey(client) && <button className="secondary" onClick={()=>{setRenewingClientKey(clientRowKey(client));setRenewTerm('1m');}}><RotateCcw size={16}/>{t('renew')}</button>}
+          {renewingClientKey===clientRowKey(client) && <span className="inline-edit">
+            <select value={renewTerm} onChange={e=>setRenewTerm(e.target.value)}>
+              {clientTerms.filter(([v])=>v!=='admin'&&v!=='forever').map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
+            </select>
+            <button className="secondary icon-button" title={t('renew')} onClick={()=>renewClient(client).catch(handleError)}><Check size={16}/></button>
+            <button className="secondary icon-button" title={t('cancel')} onClick={()=>setRenewingClientKey('')}><X size={16}/></button>
+          </span>}
         </div>
       </div>
     </td></tr>;
@@ -1078,13 +1141,66 @@ function App(){
     </td></tr>;
   };
 
+  if (isPortalRoute) return <main className="public-page">
+    <section className="public-hero">
+      <div className="public-hero-copy">
+        <h1>{t('appName')}</h1>
+        <p>{t('portalTitle')}</p>
+      </div>
+      <button className="secondary public-admin-link" onClick={()=>navigate('/')}>{t('home')}</button>
+    </section>
+    <section className="public-layout portal-layout">
+      <div className="card portal-search-card">
+        <div className="panel-head"><div><h2>{t('portalTitle')}</h2><p>{t('portalDesc')}</p></div></div>
+        <div className="client-form-grid">
+          <label>{t('portalContact')}<input value={portalContact} onChange={e=>setPortalContact(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') portalLookup().catch(()=>{}); }} placeholder={t('contactPlaceholder')} /></label>
+        </div>
+        <button onClick={()=>portalLookup().catch(()=>{})} disabled={portalLoading||!portalContact.trim()}>{portalLoading?<Loader2 size={16} className="spin-icon"/>:<CheckCircle2 size={16}/>}{t('portalSearch')}</button>
+      </div>
+      {portalClients!==null && portalClients.length===0 && <div className="card portal-empty"><p>{t('portalNotFound')}</p></div>}
+      {portalClients && portalClients.map((c,idx)=>{
+        const cfg=portalConfigs[idx];
+        const qrVisible=portalQrVisible[idx];
+        return <div key={idx} className="card portal-client-card">
+          <div className="portal-client-header">
+            <strong>{c.name||'—'}</strong>
+            <span className={`badge ${c.status==='active'?'ok':'expired'}`}>{c.status==='active'?t('portalActive'):t('portalExpired')}</span>
+          </div>
+          {c.expiresAt && <div className="portal-client-meta"><span>{t('portalExpires')}:</span> <strong>{c.expiresAt}</strong></div>}
+          {c.clientId && <div className="portal-client-meta"><span>{t('clientId')}:</span> <code>{c.clientId}</code></div>}
+          {c.hasConfig && !cfg && <div className="portal-id-form">
+            <label>{t('portalClientId')}
+              <small>{t('portalClientIdDesc')}</small>
+              <input value={portalClientIds[idx]||''} onChange={e=>setPortalClientIds(prev=>({...prev,[idx]:e.target.value}))} placeholder="a3f2b1c4" />
+            </label>
+            <div className="portal-config-actions">
+              <button onClick={()=>portalFetchConfig(idx).catch(()=>{})}><Download size={16}/>{t('portalGetConfig')}</button>
+            </div>
+          </div>}
+          {cfg && <>
+            <div className="portal-config-actions">
+              <button className="secondary" onClick={()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([cfg],{type:'text/plain'})); a.download=`${c.name||'client'}.conf`; a.click(); }}><Download size={16}/>{t('download')}</button>
+              <button className="secondary" onClick={()=>navigator.clipboard.writeText(cfg).catch(()=>{})}><Clipboard size={16}/>{t('copyConfig')}</button>
+              <button className="secondary" onClick={()=>setPortalQrVisible(prev=>({...prev,[idx]:!prev[idx]}))}><QrCode size={16}/>{t('portalShowQr')}</button>
+            </div>
+            {qrVisible && <div className="portal-qr"><QRCanvas text={cfg} size={240}/></div>}
+          </>}
+          {!c.hasConfig && <p className="portal-no-config">{t('portalConfigNotAvail')}</p>}
+        </div>;
+      })}
+    </section>
+  </main>;
+
   if (!isAdminRoute) return <main className="public-page">
     <section className="public-hero">
       <div className="public-hero-copy">
         <h1>{t('appName')}</h1>
         <p>{t('purchaseSub')}</p>
       </div>
-      <button className="secondary public-admin-link" onClick={()=>navigate('/admin')}>{t('adminPanel')}</button>
+      <div className="public-hero-actions">
+        <button className="secondary" onClick={()=>navigate('/portal')}>{t('portalCabinet')}</button>
+        <button className="secondary public-admin-link" onClick={()=>navigate('/admin')}>{t('adminPanel')}</button>
+      </div>
     </section>
 
     <section className="public-layout">
