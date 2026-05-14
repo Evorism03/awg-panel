@@ -722,8 +722,8 @@ pre{
    - .server-table  → ≤640px
    ─────────────────────────────────────────────────────────────────────────── */
 
-/* ── Client tables card layout ≤1100px ── */
-@media(max-width:1100px){
+/* ── Client tables card layout ≤1400px ── */
+@media(max-width:1400px){
   .card > table.client-table{overflow-x:visible !important}
   .client-table,.active-client-table,.expired-client-table{
     display:block !important;min-width:0 !important;
@@ -781,8 +781,8 @@ pre{
   .client-table .icon-button{width:36px !important;min-height:36px !important}
 }
 
-/* ── Orders + server tables card layout ≤640px ── */
-@media(max-width:640px){
+/* ── Orders + server tables card layout ≤900px ── */
+@media(max-width:900px){
   .card > table.orders-table,.card > table.server-table{overflow-x:visible !important}
   .table-wrap{overflow-x:visible !important}
   .orders-table,.server-table{
