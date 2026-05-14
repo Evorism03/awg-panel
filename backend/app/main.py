@@ -288,30 +288,59 @@ def save_expired_clients(clients: dict):
         json.dump(clients, f, ensure_ascii=False, indent=2, sort_keys=True)
 
 
-def clients_meta_path() -> str:
-    os.makedirs(CLIENTS_DIR, exist_ok=True)
-    return f"{CLIENTS_DIR}/clients-meta.json"
+_CLIENTS_META_PATH = f"{CLIENTS_DIR}/clients-meta.json"
+_meta_cache: dict = {}
+_meta_cache_mtime: float = -1.0
 
 
 def load_clients_meta() -> dict:
-    path = clients_meta_path()
-    if not os.path.exists(path):
-        return {}
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    global _meta_cache, _meta_cache_mtime
+    try:
+        mtime = os.path.getmtime(_CLIENTS_META_PATH)
+        if mtime == _meta_cache_mtime:
+            return _meta_cache
+        with open(_CLIENTS_META_PATH, "r", encoding="utf-8") as f:
+            _meta_cache = json.load(f)
+        _meta_cache_mtime = mtime
+    except FileNotFoundError:
+        _meta_cache = {}
+        _meta_cache_mtime = -1.0
+    return _meta_cache
 
 
 def save_clients_meta(meta: dict):
-    with open(clients_meta_path(), "w", encoding="utf-8") as f:
+    global _meta_cache, _meta_cache_mtime
+    os.makedirs(CLIENTS_DIR, exist_ok=True)
+    with open(_CLIENTS_META_PATH, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2, sort_keys=True)
+    _meta_cache = meta
+    try:
+        _meta_cache_mtime = os.path.getmtime(_CLIENTS_META_PATH)
+    except Exception:
+        pass
 
 
 def attach_meta_to_peers(peers: list[dict]) -> list[dict]:
     meta = load_clients_meta()
+    changed = False
     for peer in peers:
         pk = peer.get("PublicKey", "").strip()
+        if not pk:
+            continue
         m = meta.get(pk, {})
+        # conf > meta > generate new
+        client_id = peer.get("clientId") or m.get("id") or ""
+        if not client_id:
+            client_id = secrets.token_hex(4)
+            changed = True
+        peer["clientId"] = client_id
         peer.setdefault("contact", m.get("contact", ""))
+        if m.get("id") != client_id:
+            m["id"] = client_id
+            meta[pk] = m
+            changed = True
+    if changed:
+        save_clients_meta(meta)
     return peers
 
 
@@ -1162,7 +1191,7 @@ AllowedIPs = {ip}/32
         write_cfg(text.rstrip() + peer_block)
         reload_async()
         meta = load_clients_meta()
-        meta[public_key] = {"contact": body.contact.strip()}
+        meta[public_key] = {"id": client_id, "contact": body.contact.strip()}
         save_clients_meta(meta)
         server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
         cfg = client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
