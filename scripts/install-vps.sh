@@ -256,19 +256,17 @@ update_existing_env() {
   awg_iface="${AWG_INTERFACE:-$(interface_from_config_path "$awg_config_path")}"
   set_env_key "$env_path" "AWG_INTERFACE" "$awg_iface"
 
-  # Update SERVER_ENDPOINT when wizard/env provided a new value.
-  # This ensures a re-install always has the correct public IP in the endpoint,
-  # not the stale value from a previous run.
+  # Always refresh SERVER_ENDPOINT with the current public IP.
+  # On reinstall the old .env may have a stale IP from a previous server —
+  # redetect unconditionally so the endpoint stays correct.
   local new_ep="${SERVER_ENDPOINT:-}"
-  if [ -z "$new_ep" ] && [ -n "${SERVER_IP:-}" ]; then
-    # SERVER_IP set (by wizard or env var) but full endpoint not provided:
-    # keep the existing port, replace only the IP.
+  if [ -z "$new_ep" ]; then
+    local current_ip; current_ip="$(detect_public_ip)"
     local old_ep; old_ep="$(sed -n 's/^SERVER_ENDPOINT=//p' "$env_path" | head -n1)"
-    local old_port="${old_ep##*:}"
-    local port="${AWG_PORT:-$old_port}"
-    [ -n "$port" ] && new_ep="$SERVER_IP:$port"
+    local port="${AWG_PORT:-${old_ep##*:}}"
+    [ -n "$current_ip" ] && [ -n "$port" ] && new_ep="$current_ip:$port"
   fi
-  [ -n "$new_ep" ] && set_env_key "$env_path" "SERVER_ENDPOINT" "$new_ep"
+  [ -n "$new_ep" ] && set_env_key "$env_path" "SERVER_ENDPOINT" "$new_ep" && log_dim "SERVER_ENDPOINT updated: $new_ep"
 }
 
 write_env_if_missing() {
@@ -537,18 +535,6 @@ wizard() {
   printf "${C_BOLD}AmneziaWG UDP port${C_RESET}   [${C_CYAN}%s${C_RESET}]: " "$_default_wgport"
   read -r _ans
   AWG_PORT="${_ans:-$_default_wgport}"
-
-  # ── WireGuard endpoint ────────────────────────────────────────────────────
-  # Show the final endpoint (IP:port) so the user can spot and fix mistakes.
-  # If .env already exists, pre-fill from it; otherwise compute from above answers.
-  local _existing_ep
-  _existing_ep="$(env_value SERVER_ENDPOINT 2>/dev/null || true)"
-  local _default_ep="${SERVER_ENDPOINT:-${_existing_ep:-$SERVER_IP:$AWG_PORT}}"
-  printf "\n"
-  printf "${C_DIM}  This is what clients will connect to (written into every config).${C_RESET}\n"
-  printf "${C_BOLD}WireGuard endpoint${C_RESET}   [${C_CYAN}%s${C_RESET}]: " "$_default_ep"
-  read -r _ans
-  SERVER_ENDPOINT="${_ans:-$_default_ep}"
 
   printf "\n"
 }
