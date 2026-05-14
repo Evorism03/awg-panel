@@ -717,86 +717,119 @@ pre{
 
 /* ─── Responsive tables → card layout ≤640px ─── */
 @media(max-width:640px){
-  .client-table,.orders-table,.server-table{
+  /* Kill scroll containers */
+  .card > table{overflow-x:visible !important}
+  .table-wrap{overflow-x:visible !important}
+
+  /* Force table → block */
+  .client-table,.active-client-table,.expired-client-table,.orders-table,.server-table{
     display:block !important;
     min-width:0 !important;
     width:100% !important;
     table-layout:auto !important;
   }
   .client-table th,.client-table td,
+  .active-client-table th,.active-client-table td,
+  .expired-client-table th,.expired-client-table td,
   .orders-table th,.orders-table td,
-  .server-table th,.server-table td{width:auto !important}
-  .card > table{overflow-x:visible}
-  .table-wrap{overflow-x:visible}
-  .client-table thead,.orders-table thead,.server-table thead{display:none}
-  .client-table tbody,.orders-table tbody,.server-table tbody{display:flex;flex-direction:column;gap:0}
+  .server-table th,.server-table td{width:auto !important;max-width:none !important}
+
+  /* Hide thead */
+  .client-table thead,.orders-table thead,.server-table thead{display:none !important}
+
+  /* tbody = vertical list */
+  .client-table tbody,.orders-table tbody,.server-table tbody{
+    display:flex !important;flex-direction:column;width:100%
+  }
+
+  /* Each data row → card */
   .client-table tr:not(.detail-row),
   .orders-table tr:not(.detail-row),
   .server-table tr:not(.detail-row){
-    display:flex;flex-direction:column;
-    padding:12px;
+    display:flex !important;flex-direction:column;
+    width:100%;box-sizing:border-box;
+    padding:12px;margin-bottom:8px;
     border:1px solid var(--border);
     border-radius:var(--radius-sm);
-    margin-bottom:8px;
   }
+  /* Expanded card merges with detail below */
   .client-table tr.expanded:not(.detail-row),
   .orders-table tr.expanded:not(.detail-row),
   .server-table tr.expanded:not(.detail-row){
-    margin-bottom:0;
-    border-bottom-left-radius:0;
-    border-bottom-right-radius:0;
+    margin-bottom:0 !important;
+    border-bottom-left-radius:0 !important;
+    border-bottom-right-radius:0 !important;
+    border-bottom-color:transparent !important;
   }
-  .client-table tr.detail-row,
-  .orders-table tr.detail-row,
-  .server-table tr.detail-row{
-    display:block;
+  /* Detail row */
+  .client-table tr.detail-row,.orders-table tr.detail-row,.server-table tr.detail-row{
+    display:block !important;width:100%;
     margin-bottom:8px;
-    border:1px solid var(--border);
-    border-top:none;
+    border:1px solid var(--border);border-top:none;
     border-radius:0 0 var(--radius-sm) var(--radius-sm);
   }
-  .client-table tr.detail-row td,
-  .orders-table tr.detail-row td,
-  .server-table tr.detail-row td{display:block;padding:0;white-space:normal;overflow:visible}
-  .client-table td:not(.table-actions),
-  .orders-table td:not(.table-actions),
-  .server-table td:not(.table-actions){
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    padding:5px 0;
-    overflow:visible;
-    white-space:normal;
-    text-overflow:clip;
-    font-size:13px;
-    border-bottom:none;
+  .client-table tr.detail-row td,.orders-table tr.detail-row td,.server-table tr.detail-row td{
+    display:block !important;padding:0 !important;
+    white-space:normal !important;overflow:visible !important;width:100% !important
   }
-  .client-table td[data-label]::before,
-  .orders-table td[data-label]::before,
-  .server-table td[data-label]::before{
+
+  /* First td = card title (no label) */
+  .client-table td[data-label]:first-child,
+  .orders-table td[data-label]:first-child,
+  .server-table td[data-label]:first-child{
+    display:block !important;
+    font-size:14px;font-weight:600;
+    padding:0 0 8px !important;margin-bottom:4px;
+    border-bottom:1px solid rgba(255,255,255,.07) !important;
+  }
+  .client-table td[data-label]:first-child::before,
+  .orders-table td[data-label]:first-child::before,
+  .server-table td[data-label]:first-child::before{display:none !important}
+
+  /* Other data tds = label → value */
+  .client-table td[data-label]:not(:first-child),
+  .orders-table td[data-label]:not(:first-child),
+  .server-table td[data-label]:not(:first-child){
+    display:flex !important;
+    justify-content:space-between;align-items:center;
+    padding:4px 0 !important;
+    white-space:normal !important;overflow:visible !important;
+    text-overflow:clip !important;font-size:13px;
+    border:none !important;vertical-align:unset !important;
+  }
+  .client-table td[data-label]:not(:first-child)::before,
+  .orders-table td[data-label]:not(:first-child)::before,
+  .server-table td[data-label]:not(:first-child)::before{
     content:attr(data-label);
-    color:var(--muted);
-    font-size:11px;
-    text-transform:uppercase;
-    letter-spacing:.04em;
-    flex:0 0 36%;
-    padding-right:8px;
+    color:var(--muted);font-size:11px;
+    text-transform:uppercase;letter-spacing:.04em;
+    flex:0 0 40%;padding-right:8px;
   }
+
+  /* Actions cell */
   .client-table .table-actions,
   .orders-table .table-actions,
   .server-table .table-actions{
-    display:flex;justify-content:flex-start;flex-wrap:wrap;gap:6px;
-    padding-top:10px;margin-top:6px;
+    display:flex !important;
+    justify-content:flex-start !important;flex-wrap:wrap !important;
+    gap:6px;width:100% !important;
+    padding:10px 0 0 !important;margin-top:6px;
     border-top:1px solid rgba(255,255,255,.06);
-    white-space:normal;overflow:visible;
+    white-space:normal !important;overflow:visible !important;
   }
   .client-table .table-actions::before,
   .orders-table .table-actions::before,
-  .server-table .table-actions::before{display:none}
-  .client-table .table-actions button,
-  .orders-table .table-actions button,
-  .server-table .table-actions button{flex:0 0 auto;width:auto;min-width:0}
-  .server-table .table-actions{flex-wrap:wrap}
+  .server-table .table-actions::before{display:none !important;content:none !important}
+
+  /* client-actions div inside table-actions */
+  .client-table .client-actions,.orders-table .client-actions,.server-table .client-actions{
+    justify-content:flex-start !important;flex-wrap:wrap !important;width:100%
+  }
+
+  /* Buttons in actions — slightly larger tap target */
+  .client-table .icon-button,.orders-table .icon-button,.server-table .icon-button{
+    width:36px !important;min-height:36px !important
+  }
 }
 
 /* ─── Responsive: ≤520px ─── */
