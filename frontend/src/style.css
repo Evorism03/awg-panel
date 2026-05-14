@@ -737,7 +737,7 @@ pre{
   .client-table tr:not(.detail-row){
     display:flex !important;flex-direction:column;
     width:100%;box-sizing:border-box;
-    padding:12px;margin-bottom:8px;
+    padding:14px;margin-bottom:10px;
     border:1px solid var(--border);border-radius:var(--radius-sm);
   }
   .client-table tr.expanded:not(.detail-row){
@@ -772,7 +772,7 @@ pre{
   }
   .client-table .table-actions{
     display:flex !important;justify-content:flex-start !important;flex-wrap:wrap !important;
-    gap:6px;width:100% !important;padding:10px 0 0 !important;margin-top:6px;
+    gap:8px;width:100% !important;padding:10px 0 6px !important;margin-top:8px;
     border-top:1px solid rgba(255,255,255,.06);
     white-space:normal !important;overflow:visible !important;
   }
@@ -796,7 +796,7 @@ pre{
   .orders-table tr:not(.detail-row),.server-table tr:not(.detail-row){
     display:flex !important;flex-direction:column;
     width:100%;box-sizing:border-box;
-    padding:12px;margin-bottom:8px;
+    padding:14px;margin-bottom:10px;
     border:1px solid var(--border);border-radius:var(--radius-sm);
   }
   .orders-table tr.expanded:not(.detail-row),.server-table tr.expanded:not(.detail-row){
@@ -830,7 +830,7 @@ pre{
   }
   .orders-table .table-actions,.server-table .table-actions{
     display:flex !important;justify-content:flex-start !important;flex-wrap:wrap !important;
-    gap:6px;width:100% !important;padding:10px 0 0 !important;margin-top:6px;
+    gap:8px;width:100% !important;padding:10px 0 6px !important;margin-top:8px;
     border-top:1px solid rgba(255,255,255,.06);
     white-space:normal !important;overflow:visible !important;
   }
