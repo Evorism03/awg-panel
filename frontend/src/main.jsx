@@ -231,7 +231,7 @@ function App(){
   const [importName,setImportName]=useState('');
   const [importConfig,setImportConfig]=useState('');
   const [showImportForm,setShowImportForm]=useState(false);
-  const [clientServerId,setClientServerId]=useState(()=>localStorage.getItem('activeServerId')||'local');
+  const [clientServerId,setClientServerId]=useState(()=>{ const s=localStorage.getItem('activeServerId')||'local'; return s==='all'?'local':s; });
   const [clientConfigs,setClientConfigs]=useState(()=>JSON.parse(localStorage.getItem('clientConfigs')||'{}'));
   const [selectedConfig,setSelectedConfig]=useState('');
   const [showServerForm,setShowServerForm]=useState(false);
@@ -404,7 +404,7 @@ function App(){
     setTimeout(()=>setNotice(''), 2000);
   };
   const create=async()=>{
-    const targetServer = servers.find(s=>s.id===clientServerId);
+    const targetServer = servers.find(s=>s.id===clientServerId) ?? (clientServerId==='local'?{id:'local',status:'online'}:null);
     if(!targetServer || !serverConnection(targetServer)){
       setError(t('serverUnavailable'));
       return;
