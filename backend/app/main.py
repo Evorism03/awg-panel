@@ -1637,7 +1637,7 @@ def renew_client(
 @app.patch("/api/clients/expiry")
 def update_client_expiry(
     public_key: str = Query(...),
-    body: ClientExpiry = None,
+    body: ClientExpiry = ClientExpiry(),
     authorization: str | None = Header(None),
     awg_panel_session: str | None = Cookie(None),
     server_id: str | None = Query(None),
@@ -1645,7 +1645,7 @@ def update_client_expiry(
     auth(authorization, awg_panel_session)
     server = get_server(server_id)
     if server is not None:
-        return panel_json(server, "PATCH", f"/clients/expiry?public_key={quote(public_key.strip(), safe='')}", payload=(body or ClientExpiry()).model_dump(exclude_none=True))
+        return panel_json(server, "PATCH", f"/clients/expiry?public_key={quote(public_key.strip(), safe='')}", payload=body.model_dump(exclude_none=True))
     with data_lock:
         target = public_key.strip()
         new_expiry = (body.expiresAt or "").strip()

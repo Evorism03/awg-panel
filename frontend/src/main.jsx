@@ -546,6 +546,8 @@ function App(){
     const serverId=client.serverId||activeServerId;
     await api(`/api/clients/expiry?public_key=${encodeURIComponent(client.PublicKey)}&server_id=${encodeURIComponent(serverId)}`,{method:'PATCH',body:JSON.stringify({expiresAt:val})});
     cancelEditExpiry();
+    setNotice(val ? `Срок: ${formatDate(val)}` : 'Срок: бессрочно');
+    setTimeout(()=>setNotice(''),3000);
     await loadClients(serverId);
   };
   const portalLookupById=async()=>{
