@@ -544,7 +544,7 @@ function App(){
   const saveExpiry=async(client, expiresAt)=>{
     const val = expiresAt !== undefined ? expiresAt : editingExpiryValueRef.current;
     const serverId=client.serverId||activeServerId;
-    await api(`/api/clients/${encodeURIComponent(client.PublicKey)}/expiry?server_id=${encodeURIComponent(serverId)}`,{method:'PATCH',body:JSON.stringify({expiresAt:val})});
+    await api(`/api/clients/expiry?public_key=${encodeURIComponent(client.PublicKey)}&server_id=${encodeURIComponent(serverId)}`,{method:'PATCH',body:JSON.stringify({expiresAt:val})});
     cancelEditExpiry();
     await loadClients(serverId);
   };
