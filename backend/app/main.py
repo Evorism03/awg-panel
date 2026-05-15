@@ -3,7 +3,7 @@ from fastapi import Query
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-import asyncio, base64, configparser, hashlib, ipaddress, json, os, re, secrets, shutil, subprocess, time
+import asyncio, base64, configparser, hashlib, ipaddress, json, os, re, secrets, shutil, subprocess, time, uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from threading import RLock
@@ -52,8 +52,30 @@ async def _sse_monitor():
         except Exception:
             pass
 
+def _singbox_migrate_existing():
+    if not SINGBOX_ENABLED:
+        return
+    try:
+        peers = parse_peers(read_cfg())
+        users = _sb_load_users()
+        changed = False
+        for peer in peers:
+            pk = peer.get("PublicKey", "").strip()
+            if not pk or pk in users:
+                continue
+            users[pk] = {"uuid": str(uuid.uuid4()), "name": peer.get("name", "")}
+            changed = True
+        if changed:
+            _sb_save_users(users)
+            _sb_write_config()
+            _sb_reload()
+    except Exception:
+        pass
+
+
 @asynccontextmanager
 async def lifespan(_app):
+    await asyncio.to_thread(_singbox_migrate_existing)
     task = asyncio.create_task(_sse_monitor())
     yield
     task.cancel()
@@ -511,6 +533,7 @@ def create_client_local(name: str, term: str, contact: str) -> dict:
     server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
     cfg = f"# Client ID: {client_id}\n" + client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
     store_client_export(public_key, name, cfg)
+    create_singbox_user(public_key, name)
     return {"name": name, "publicKey": public_key, "clientId": client_id,
             "contact": contact.strip(), "address": f"{ip}/32", "expiresAt": expires_at, "config": cfg}
 
@@ -996,6 +1019,146 @@ def _reload_bg():
 def reload_async():
     __import__('threading').Thread(target=_reload_bg, daemon=True).start()
 
+
+def _process_pending_orders_bg():
+    try:
+        with data_lock:
+            orders = load_orders()
+            changed = False
+            for index, order in enumerate(orders):
+                if order.get("status") != "pending":
+                    continue
+                updated = process_order_internal(order)
+                if updated.get("status") == "issued":
+                    orders[index] = updated
+                    changed = True
+            if changed:
+                save_orders(orders)
+    except Exception:
+        pass
+
+
+# ─── sing-box / VLESS+Reality ─────────────────────────────────────────────────
+
+def _sb_keys_path() -> str:
+    os.makedirs(SINGBOX_DATA_DIR, exist_ok=True)
+    return f"{SINGBOX_DATA_DIR}/keys.json"
+
+def _sb_users_path() -> str:
+    os.makedirs(SINGBOX_DATA_DIR, exist_ok=True)
+    return f"{SINGBOX_DATA_DIR}/users.json"
+
+def _sb_config_path() -> str:
+    os.makedirs(SINGBOX_DATA_DIR, exist_ok=True)
+    return f"{SINGBOX_DATA_DIR}/config.json"
+
+def _sb_load_keys() -> dict:
+    path = _sb_keys_path()
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
+    key = X25519PrivateKey.generate()
+    priv = base64.urlsafe_b64encode(
+        key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
+    ).rstrip(b"=").decode()
+    pub = base64.urlsafe_b64encode(
+        key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    ).rstrip(b"=").decode()
+    keys = {"privateKey": priv, "publicKey": pub}
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(keys, f)
+    return keys
+
+def _sb_load_users() -> dict:
+    path = _sb_users_path()
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def _sb_save_users(users: dict):
+    with open(_sb_users_path(), "w", encoding="utf-8") as f:
+        json.dump(users, f, ensure_ascii=False, indent=2)
+
+def _sb_write_config():
+    keys = _sb_load_keys()
+    users = _sb_load_users()
+    cfg = {
+        "log": {"level": "warn"},
+        "inbounds": [{
+            "type": "vless",
+            "listen": "::",
+            "listen_port": SINGBOX_PORT,
+            "users": [
+                {"uuid": u["uuid"], "flow": "xtls-rprx-vision", "name": u.get("name", "")}
+                for u in users.values()
+            ],
+            "tls": {
+                "enabled": True,
+                "server_name": SINGBOX_REALITY_SNI,
+                "reality": {
+                    "enabled": True,
+                    "handshake": {"server": SINGBOX_REALITY_SNI, "server_port": 443},
+                    "private_key": keys["privateKey"],
+                    "short_id": [""],
+                },
+            },
+        }],
+        "outbounds": [{"type": "direct"}],
+    }
+    with open(_sb_config_path(), "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+
+def _sb_reload():
+    if not SINGBOX_CONTAINER:
+        return
+    try:
+        subprocess.run(
+            ["docker", "kill", "--signal", "HUP", SINGBOX_CONTAINER],
+            capture_output=True, timeout=5,
+        )
+    except Exception:
+        pass
+
+def create_singbox_user(public_key: str, name: str):
+    if not SINGBOX_ENABLED:
+        return
+    users = _sb_load_users()
+    if public_key not in users:
+        users[public_key] = {"uuid": str(uuid.uuid4()), "name": name}
+        _sb_save_users(users)
+    _sb_write_config()
+    _sb_reload()
+
+def delete_singbox_user(public_key: str):
+    if not SINGBOX_ENABLED:
+        return
+    users = _sb_load_users()
+    if public_key in users:
+        del users[public_key]
+        _sb_save_users(users)
+        _sb_write_config()
+        _sb_reload()
+
+def get_singbox_vless_uri(public_key: str) -> str | None:
+    if not SINGBOX_ENABLED:
+        return None
+    users = _sb_load_users()
+    user = users.get(public_key)
+    if not user:
+        return None
+    keys = _sb_load_keys()
+    host = SERVER_ENDPOINT.rsplit(":", 1)[0] if ":" in SERVER_ENDPOINT else SERVER_ENDPOINT
+    name_enc = quote(user.get("name", public_key[:8]))
+    return (
+        f"vless://{user['uuid']}@{host}:{SINGBOX_PORT}"
+        f"?security=reality&sni={SINGBOX_REALITY_SNI}&fp=chrome"
+        f"&pbk={keys['publicKey']}&sid=&flow=xtls-rprx-vision"
+        f"#{name_enc}"
+    )
+
 @app.get("/api/events")
 async def sse_events(
     authorization: str | None = Header(None),
@@ -1318,6 +1481,7 @@ AllowedIPs = {ip}/32
         server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
         cfg = f"# Client ID: {client_id}\n" + client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
         store_client_export(public_key, name, cfg)
+        create_singbox_user(public_key, name)
         return {
             "name": name,
             "publicKey": public_key,
@@ -1417,8 +1581,10 @@ def delete_client_by_key(public_key: str, server_id: str | None = None):
                 os.remove(named_path)
         if expired_removed is not None and not removed_allowed_ips:
             removed_allowed_ips = expired_removed.get("AllowedIPs", "")
+        delete_singbox_user(target_key)
         if found:
             reload_async()
+            __import__('threading').Thread(target=_process_pending_orders_bg, daemon=True).start()
         return {"ok": True}
 
 
@@ -1524,6 +1690,24 @@ def client_config_export(
     if cfg is None:
         raise HTTPException(status_code=404, detail="Client config not found on server")
     return Response(content=cfg, media_type="text/plain; charset=utf-8")
+
+
+@app.get("/api/client-singbox-config")
+def client_singbox_config_export(
+    public_key: str,
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    server = get_server(server_id)
+    if server is not None:
+        raw = panel_bytes(server, "GET", f"/client-singbox-config?public_key={public_key}")
+        return Response(content=raw, media_type="text/plain; charset=utf-8")
+    uri = get_singbox_vless_uri(public_key)
+    if uri is None:
+        raise HTTPException(404, "sing-box not enabled or user not found")
+    return Response(content=uri, media_type="text/plain; charset=utf-8")
 
 
 # ─── Renew expired client ─────────────────────────────────────────────────────

@@ -29,3 +29,13 @@ services:
     volumes:
       - ${AWG_HOST_CONFIG_DIR:-./data/amneziawg}:/opt/amnezia/awg
     restart: unless-stopped
+  singbox:
+    image: ghcr.io/sagernet/sing-box:latest
+    container_name: awg-panel-singbox
+    profiles:
+      - singbox
+    network_mode: host
+    volumes:
+      - ./data/singbox:/etc/sing-box
+    command: ["run", "-c", "/etc/sing-box/config.json"]
+    restart: unless-stopped

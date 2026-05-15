@@ -21,3 +21,9 @@ LOCAL_SERVER_PATH = os.getenv("LOCAL_SERVER_PATH", "/data/local-server.json")
 ORDERS_PATH = os.getenv("ORDERS_PATH", "/data/orders.json")
 LOCAL_SERVER_NAME = os.getenv("LOCAL_SERVER_NAME", "Current panel")
 LOCAL_SERVER_ID = os.getenv("LOCAL_SERVER_ID", "local")
+
+SINGBOX_ENABLED = os.getenv("SINGBOX_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+SINGBOX_PORT = int(os.getenv("SINGBOX_PORT", "443"))
+SINGBOX_DATA_DIR = os.getenv("SINGBOX_DATA_DIR", "/data/singbox")
+SINGBOX_REALITY_SNI = os.getenv("SINGBOX_REALITY_SNI", "vk.com")
+SINGBOX_CONTAINER = os.getenv("SINGBOX_CONTAINER", "awg-panel-singbox")
