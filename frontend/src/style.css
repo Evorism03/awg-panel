@@ -24,10 +24,13 @@ html{overflow-x:hidden;scroll-behavior:smooth}
 body{
   margin:0;
   min-width:320px;
+  min-height:100vh;
   overflow-x:hidden;
   background:
     radial-gradient(ellipse 80% 50% at 50% -10%, rgba(99,119,255,.08) 0%, transparent 70%),
     linear-gradient(180deg,#090f1e 0%,var(--bg) 40%,#060910 100%);
+  background-attachment:fixed;
+  background-size:cover;
   color:var(--text);
   font-family:Inter,system-ui,Arial,sans-serif;
   line-height:1.5;

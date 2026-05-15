@@ -3,7 +3,7 @@ from fastapi import Query
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-import asyncio, base64, configparser, hashlib, ipaddress, json, os, re, secrets, shutil, subprocess, time, uuid
+import asyncio, base64, configparser, hashlib, ipaddress, json, os, re, secrets, shutil, subprocess, time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from threading import RLock
@@ -52,35 +52,35 @@ async def _sse_monitor():
         except Exception:
             pass
 
-def _singbox_migrate_existing():
-    if not SINGBOX_ENABLED:
-        return
-    try:
-        peers = parse_peers(read_cfg())
-        users = _sb_load_users()
-        changed = False
-        for peer in peers:
-            pk = peer.get("PublicKey", "").strip()
-            if not pk or pk in users:
-                continue
-            users[pk] = {"uuid": str(uuid.uuid4()), "name": peer.get("name", "")}
-            changed = True
-        if changed:
-            _sb_save_users(users)
-            _sb_write_config()
-            _sb_reload()
-    except Exception:
-        pass
+
+async def _expiry_enforcer():
+    """Check and block expired clients every hour."""
+    while True:
+        await asyncio.sleep(3600)
+        try:
+            await asyncio.to_thread(enforce_expired_clients)
+        except Exception:
+            pass
 
 
 @asynccontextmanager
 async def lifespan(_app):
-    await asyncio.to_thread(_singbox_migrate_existing)
+    # Enforce expiry once at startup to catch clients that expired while the server was down
+    try:
+        enforce_expired_clients()
+    except Exception:
+        pass
     task = asyncio.create_task(_sse_monitor())
+    expiry_task = asyncio.create_task(_expiry_enforcer())
     yield
     task.cancel()
+    expiry_task.cancel()
     try:
         await task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await expiry_task
     except asyncio.CancelledError:
         pass
 
@@ -128,6 +128,9 @@ class OrderUpdate(BaseModel):
 
 class ClientRenew(BaseModel):
     term: str = "1m"
+
+class ClientExpiry(BaseModel):
+    expiresAt: str | None = None
 
 def auth(authorization: str | None, awg_panel_session: str | None):
     bearer_ok = authorization == f"Bearer {ADMIN_TOKEN}"
@@ -287,6 +290,9 @@ def parse_peers(text: str) -> list[dict]:
         id_m = re.search(r"#\s*ID:\s*(.+)", chunk)
         if id_m:
             data["clientId"] = id_m.group(1).strip()
+        created_m = re.search(r"#\s*Created:\s*(.+)", chunk)
+        if created_m:
+            data["createdAt"] = created_m.group(1).strip()
         for line in chunk.splitlines():
             if "=" in line and not line.strip().startswith("#"):
                 k, v = line.split("=", 1)
@@ -348,6 +354,7 @@ def save_clients_meta(meta: dict):
 def attach_meta_to_peers(peers: list[dict]) -> list[dict]:
     meta = load_clients_meta()
     changed = False
+    today = date.today().isoformat()
     for peer in peers:
         pk = peer.get("PublicKey", "").strip()
         if not pk:
@@ -362,6 +369,13 @@ def attach_meta_to_peers(peers: list[dict]) -> list[dict]:
         peer.setdefault("contact", m.get("contact", ""))
         if m.get("id") != client_id:
             m["id"] = client_id
+            meta[pk] = m
+            changed = True
+        # createdAt: peer block > meta > today (written once, never overwritten)
+        created_at = peer.get("createdAt") or m.get("createdAt") or today
+        peer["createdAt"] = created_at
+        if m.get("createdAt") != created_at:
+            m["createdAt"] = created_at
             meta[pk] = m
             changed = True
     if changed:
@@ -524,7 +538,8 @@ def create_client_local(name: str, term: str, contact: str) -> dict:
     expires_at = expiration_date(term)
     expires_line = f"# Expires: {expires_at}\n" if expires_at else ""
     client_id = secrets.token_hex(4)
-    peer_block = f"\n\n[Peer]\n# Name: {name}\n# ID: {client_id}\n{expires_line}PublicKey = {public_key}\nPresharedKey = {psk}\nAllowedIPs = {ip}/32\n"
+    created_at = date.today().isoformat()
+    peer_block = f"\n\n[Peer]\n# Name: {name}\n# ID: {client_id}\n# Created: {created_at}\n{expires_line}PublicKey = {public_key}\nPresharedKey = {psk}\nAllowedIPs = {ip}/32\n"
     write_cfg(text.rstrip() + peer_block)
     reload_async()
     meta = load_clients_meta()
@@ -533,9 +548,8 @@ def create_client_local(name: str, term: str, contact: str) -> dict:
     server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
     cfg = f"# Client ID: {client_id}\n" + client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
     store_client_export(public_key, name, cfg)
-    create_singbox_user(public_key, name)
     return {"name": name, "publicKey": public_key, "clientId": client_id,
-            "contact": contact.strip(), "address": f"{ip}/32", "expiresAt": expires_at, "config": cfg}
+            "contact": contact.strip(), "address": f"{ip}/32", "expiresAt": expires_at, "createdAt": created_at, "config": cfg}
 
 
 def count_server_active_clients(server: dict) -> int:
@@ -1038,126 +1052,6 @@ def _process_pending_orders_bg():
         pass
 
 
-# ─── sing-box / VLESS+Reality ─────────────────────────────────────────────────
-
-def _sb_keys_path() -> str:
-    os.makedirs(SINGBOX_DATA_DIR, exist_ok=True)
-    return f"{SINGBOX_DATA_DIR}/keys.json"
-
-def _sb_users_path() -> str:
-    os.makedirs(SINGBOX_DATA_DIR, exist_ok=True)
-    return f"{SINGBOX_DATA_DIR}/users.json"
-
-def _sb_config_path() -> str:
-    os.makedirs(SINGBOX_DATA_DIR, exist_ok=True)
-    return f"{SINGBOX_DATA_DIR}/config.json"
-
-def _sb_load_keys() -> dict:
-    path = _sb_keys_path()
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
-    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
-    key = X25519PrivateKey.generate()
-    priv = base64.urlsafe_b64encode(
-        key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
-    ).rstrip(b"=").decode()
-    pub = base64.urlsafe_b64encode(
-        key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-    ).rstrip(b"=").decode()
-    keys = {"privateKey": priv, "publicKey": pub}
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(keys, f)
-    return keys
-
-def _sb_load_users() -> dict:
-    path = _sb_users_path()
-    if not os.path.exists(path):
-        return {}
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def _sb_save_users(users: dict):
-    with open(_sb_users_path(), "w", encoding="utf-8") as f:
-        json.dump(users, f, ensure_ascii=False, indent=2)
-
-def _sb_write_config():
-    keys = _sb_load_keys()
-    users = _sb_load_users()
-    cfg = {
-        "log": {"level": "warn"},
-        "inbounds": [{
-            "type": "vless",
-            "listen": "::",
-            "listen_port": SINGBOX_PORT,
-            "users": [
-                {"uuid": u["uuid"], "flow": "xtls-rprx-vision", "name": u.get("name", "")}
-                for u in users.values()
-            ],
-            "tls": {
-                "enabled": True,
-                "server_name": SINGBOX_REALITY_SNI,
-                "reality": {
-                    "enabled": True,
-                    "handshake": {"server": SINGBOX_REALITY_SNI, "server_port": 443},
-                    "private_key": keys["privateKey"],
-                    "short_id": [""],
-                },
-            },
-        }],
-        "outbounds": [{"type": "direct"}],
-    }
-    with open(_sb_config_path(), "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
-
-def _sb_reload():
-    if not SINGBOX_CONTAINER:
-        return
-    try:
-        subprocess.run(
-            ["docker", "kill", "--signal", "HUP", SINGBOX_CONTAINER],
-            capture_output=True, timeout=5,
-        )
-    except Exception:
-        pass
-
-def create_singbox_user(public_key: str, name: str):
-    if not SINGBOX_ENABLED:
-        return
-    users = _sb_load_users()
-    if public_key not in users:
-        users[public_key] = {"uuid": str(uuid.uuid4()), "name": name}
-        _sb_save_users(users)
-    _sb_write_config()
-    _sb_reload()
-
-def delete_singbox_user(public_key: str):
-    if not SINGBOX_ENABLED:
-        return
-    users = _sb_load_users()
-    if public_key in users:
-        del users[public_key]
-        _sb_save_users(users)
-        _sb_write_config()
-        _sb_reload()
-
-def get_singbox_vless_uri(public_key: str) -> str | None:
-    if not SINGBOX_ENABLED:
-        return None
-    users = _sb_load_users()
-    user = users.get(public_key)
-    if not user:
-        return None
-    keys = _sb_load_keys()
-    host = SERVER_ENDPOINT.rsplit(":", 1)[0] if ":" in SERVER_ENDPOINT else SERVER_ENDPOINT
-    name_enc = quote(user.get("name", public_key[:8]))
-    return (
-        f"vless://{user['uuid']}@{host}:{SINGBOX_PORT}"
-        f"?security=reality&sni={SINGBOX_REALITY_SNI}&fp=chrome"
-        f"&pbk={keys['publicKey']}&sid=&flow=xtls-rprx-vision"
-        f"#{name_enc}"
-    )
 
 @app.get("/api/events")
 async def sse_events(
@@ -1464,11 +1358,13 @@ def create_client(
         expires_at = expiration_date(body.term)
         expires_line = f"# Expires: {expires_at}\n" if expires_at else ""
         client_id = secrets.token_hex(4)
+        created_at = date.today().isoformat()
         peer_block = f"""
 
 [Peer]
 # Name: {name}
 # ID: {client_id}
+# Created: {created_at}
 {expires_line}PublicKey = {public_key}
 PresharedKey = {psk}
 AllowedIPs = {ip}/32
@@ -1481,7 +1377,6 @@ AllowedIPs = {ip}/32
         server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
         cfg = f"# Client ID: {client_id}\n" + client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
         store_client_export(public_key, name, cfg)
-        create_singbox_user(public_key, name)
         return {
             "name": name,
             "publicKey": public_key,
@@ -1489,6 +1384,7 @@ AllowedIPs = {ip}/32
             "contact": body.contact.strip(),
             "address": f"{ip}/32",
             "expiresAt": expires_at,
+            "createdAt": created_at,
             "config": cfg,
             "configUrl": f"/api/client-config?public_key={public_key}",
         }
@@ -1581,7 +1477,6 @@ def delete_client_by_key(public_key: str, server_id: str | None = None):
                 os.remove(named_path)
         if expired_removed is not None and not removed_allowed_ips:
             removed_allowed_ips = expired_removed.get("AllowedIPs", "")
-        delete_singbox_user(target_key)
         if found:
             reload_async()
             __import__('threading').Thread(target=_process_pending_orders_bg, daemon=True).start()
@@ -1692,24 +1587,6 @@ def client_config_export(
     return Response(content=cfg, media_type="text/plain; charset=utf-8")
 
 
-@app.get("/api/client-singbox-config")
-def client_singbox_config_export(
-    public_key: str,
-    authorization: str | None = Header(None),
-    awg_panel_session: str | None = Cookie(None),
-    server_id: str | None = Query(None),
-):
-    auth(authorization, awg_panel_session)
-    server = get_server(server_id)
-    if server is not None:
-        raw = panel_bytes(server, "GET", f"/client-singbox-config?public_key={public_key}")
-        return Response(content=raw, media_type="text/plain; charset=utf-8")
-    uri = get_singbox_vless_uri(public_key)
-    if uri is None:
-        raise HTTPException(404, "sing-box not enabled or user not found")
-    return Response(content=uri, media_type="text/plain; charset=utf-8")
-
-
 # ─── Renew expired client ─────────────────────────────────────────────────────
 @app.post("/api/clients/{public_key}/renew")
 def renew_client(
@@ -1748,7 +1625,100 @@ def renew_client(
         return {"ok": True, "publicKey": target, "expiresAt": new_expiry, "name": client.get("name", "")}
 
 
+# ─── Update client expiry ────────────────────────────────────────────────────
+@app.patch("/api/clients/{public_key}/expiry")
+def update_client_expiry(
+    public_key: str,
+    body: ClientExpiry,
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    server = get_server(server_id)
+    if server is not None:
+        return panel_json(server, "PATCH", f"/clients/{quote(public_key.strip(), safe='')}/expiry", payload=body.model_dump(exclude_none=True))
+    with data_lock:
+        target = public_key.strip()
+        new_expiry = (body.expiresAt or "").strip()
+        if new_expiry:
+            try:
+                date.fromisoformat(new_expiry)
+            except ValueError:
+                raise HTTPException(400, "Invalid date format. Use YYYY-MM-DD")
+        text = read_cfg()
+        chunks = re.split(r"\n(?=\[Peer\])", text)
+        next_chunks = []
+        found = False
+        for chunk in chunks:
+            peer = peer_from_block(chunk) if chunk.strip().startswith("[Peer]") else {}
+            if peer.get("PublicKey", "").strip() != target:
+                next_chunks.append(chunk)
+                continue
+            if re.search(r"(?m)^#\s*Expires:.*$", chunk):
+                if new_expiry:
+                    chunk = re.sub(r"(?m)^#\s*Expires:.*$", f"# Expires: {new_expiry}", chunk, count=1)
+                else:
+                    chunk = re.sub(r"(?m)^#\s*Expires:.*\n?", "", chunk)
+            elif new_expiry:
+                chunk = re.sub(r"(?m)^(PublicKey\s*=)", f"# Expires: {new_expiry}\n\\1", chunk, count=1)
+            next_chunks.append(chunk)
+            found = True
+        if not found:
+            raise HTTPException(404, "Client not found in active config")
+        write_cfg("\n".join(next_chunks))
+        reload_async()
+        return {"ok": True, "publicKey": target, "expiresAt": new_expiry}
+
+
 # ─── Client portal (public, no auth) ─────────────────────────────────────────
+@app.get("/api/portal/lookup-by-id")
+def portal_lookup_by_id(client_id: str = Query(...)):
+    cid = client_id.strip()
+    if not cid:
+        raise HTTPException(400, "Client ID is required")
+    meta = load_clients_meta()
+    pk = next((key for key, m in meta.items() if m.get("id", "") == cid), None)
+    if not pk:
+        return {"client": None}
+    peers_by_key = {p.get("PublicKey", "").strip(): p for p in parse_peers(read_cfg())}
+    expired = load_expired_clients()
+    peer = peers_by_key.get(pk)
+    if peer:
+        return {"client": {
+            "name": peer.get("name", ""),
+            "clientId": cid,
+            "status": "active",
+            "expiresAt": peer.get("expiresAt", ""),
+            "hasConfig": os.path.exists(client_export_path(pk)),
+        }}
+    if pk in expired:
+        exp = expired[pk]
+        return {"client": {
+            "name": exp.get("name", ""),
+            "clientId": cid,
+            "status": "expired",
+            "expiresAt": exp.get("expiresAt", ""),
+            "hasConfig": os.path.exists(client_export_path(pk)),
+        }}
+    return {"client": None}
+
+
+@app.get("/api/portal/config-by-id")
+def portal_config_by_id(client_id: str = Query(...)):
+    cid = client_id.strip()
+    if not cid:
+        raise HTTPException(400, "Client ID is required")
+    meta = load_clients_meta()
+    pk = next((key for key, m in meta.items() if m.get("id", "") == cid), None)
+    if not pk:
+        raise HTTPException(404, "Client not found")
+    cfg = load_client_export(pk)
+    if not cfg:
+        raise HTTPException(404, "Config not available. Contact your administrator.")
+    return Response(content=cfg, media_type="text/plain; charset=utf-8")
+
+
 @app.get("/api/portal/lookup")
 def portal_lookup(contact: str = Query(...)):
     contact_norm = contact.strip().lower()

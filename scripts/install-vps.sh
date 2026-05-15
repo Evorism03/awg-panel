@@ -34,13 +34,8 @@ LEGACY_QR_CONTAINER="${LEGACY_QR_CONTAINER:-awg-admin-qr-renderer}"
 BACKUP_DIR="${BACKUP_DIR:-/opt/awg-panel-backups}"
 SKIP_DOCKER_INSTALL="${SKIP_DOCKER_INSTALL:-0}"
 FORCE_PORT="${FORCE_PORT:-0}"
-SINGBOX_ENABLED="${SINGBOX_ENABLED:-false}"
-SINGBOX_PORT="${SINGBOX_PORT:-443}"
-SINGBOX_REALITY_SNI="${SINGBOX_REALITY_SNI:-vk.com}"
-SINGBOX_CONTAINER="${SINGBOX_CONTAINER:-awg-panel-singbox}"
 
 frontend_enabled() { [ "$INSTALL_MODE" = "panel" ]; }
-singbox_enabled()  { [ "$SINGBOX_ENABLED" = "true" ]; }
 
 normalize_mode() {
   if [ "$INSTALL_MODE" = "agent" ]; then
@@ -272,11 +267,6 @@ update_existing_env() {
     [ -n "$current_ip" ] && [ -n "$port" ] && new_ep="$current_ip:$port"
   fi
   [ -n "$new_ep" ] && set_env_key "$env_path" "SERVER_ENDPOINT" "$new_ep" && log_dim "SERVER_ENDPOINT updated: $new_ep"
-  ensure_env_key "$env_path" "SINGBOX_ENABLED" "$SINGBOX_ENABLED"
-  ensure_env_key "$env_path" "SINGBOX_PORT" "$SINGBOX_PORT"
-  ensure_env_key "$env_path" "SINGBOX_REALITY_SNI" "$SINGBOX_REALITY_SNI"
-  ensure_env_key "$env_path" "SINGBOX_CONTAINER" "$SINGBOX_CONTAINER"
-  ensure_env_key "$env_path" "SINGBOX_DATA_DIR" "/data/singbox"
 }
 
 write_env_if_missing() {
@@ -336,11 +326,6 @@ PANEL_HTTP_PORT=$PANEL_HTTP_PORT
 BACKEND_BIND=$BACKEND_BIND
 BACKEND_PORT=$BACKEND_PORT
 INSTALL_MODE=$INSTALL_MODE
-SINGBOX_ENABLED=$SINGBOX_ENABLED
-SINGBOX_PORT=$SINGBOX_PORT
-SINGBOX_REALITY_SNI=$SINGBOX_REALITY_SNI
-SINGBOX_CONTAINER=$SINGBOX_CONTAINER
-SINGBOX_DATA_DIR=/data/singbox
 EOF_ENV
   chmod 600 "$env_path"
   log "Config written: $env_path"
@@ -356,11 +341,6 @@ start_with_compose() {
   cd "$INSTALL_DIR"
   docker rm -f "$FRONTEND_CONTAINER" "$BACKEND_CONTAINER" "$LEGACY_QR_CONTAINER" >/dev/null 2>&1 || true
   $cmd up -d --build $services
-  if singbox_enabled; then
-    log "Starting sing-box"
-    docker rm -f "$SINGBOX_CONTAINER" >/dev/null 2>&1 || true
-    $cmd --profile singbox up -d singbox
-  fi
 }
 
 start_manually() {
@@ -393,18 +373,6 @@ start_manually() {
       "$FRONTEND_IMAGE" >/dev/null
   fi
 
-  if singbox_enabled; then
-    log "Starting sing-box"
-    docker rm -f "$SINGBOX_CONTAINER" >/dev/null 2>&1 || true
-    mkdir -p "$INSTALL_DIR/data/singbox"
-    docker run -d \
-      --name "$SINGBOX_CONTAINER" \
-      --restart unless-stopped \
-      --network host \
-      -v "$INSTALL_DIR/data/singbox:/etc/sing-box" \
-      ghcr.io/sagernet/sing-box:latest \
-      run -c /etc/sing-box/config.json >/dev/null
-  fi
 }
 
 # ─── HTTP helper (curl or wget) ───────────────────────────────────────────────
@@ -492,10 +460,6 @@ print_summary() {
   printf "  ${C_DIM}Password:${C_RESET}    ${C_YELLOW}%s${C_RESET}\n" "$admin_password"
   printf "  ${C_DIM}WG endpoint:${C_RESET} %s\n"           "$server_endpoint"
   printf "  ${C_DIM}AWG container:${C_RESET} %s\n"         "$awg_container"
-  if singbox_enabled; then
-    printf "  ${C_DIM}sing-box:${C_RESET}    VLESS+Reality :%s (SNI: %s)\n" "$SINGBOX_PORT" "$SINGBOX_REALITY_SNI"
-    printf "  ${C_DIM}VLESS URI:${C_RESET}   GET /api/client-singbox-config?public_key=...\n"
-  fi
   printf "${C_CYAN}${C_BOLD}%s${C_RESET}\n\n" "$sep"
 
   printf "${C_DIM}To add this VPS to another panel: Panel URL + ADMIN_TOKEN.${C_RESET}\n"
@@ -572,22 +536,6 @@ wizard() {
   printf "${C_BOLD}AmneziaWG UDP port${C_RESET}   [${C_CYAN}%s${C_RESET}]: " "$_default_wgport"
   read -r _ans
   AWG_PORT="${_ans:-$_default_wgport}"
-
-  # ── sing-box ──────────────────────────────────────────────────────────────
-  printf "${C_BOLD}Enable sing-box VLESS+Reality${C_RESET} (bypass mobile whitelists) [${C_CYAN}y/N${C_RESET}]: "
-  read -r _ans
-  case "${_ans:-N}" in
-    [yY]*) SINGBOX_ENABLED="true" ;;
-    *) SINGBOX_ENABLED="false" ;;
-  esac
-  if singbox_enabled; then
-    printf "${C_BOLD}sing-box port${C_RESET}        [${C_CYAN}443${C_RESET}]: "
-    read -r _ans
-    SINGBOX_PORT="${_ans:-443}"
-    printf "${C_BOLD}Reality SNI target${C_RESET}   [${C_CYAN}vk.com${C_RESET}]: "
-    read -r _ans
-    SINGBOX_REALITY_SNI="${_ans:-vk.com}"
-  fi
 
   printf "\n"
 }

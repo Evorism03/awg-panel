@@ -41,10 +41,10 @@ const dict = {
   ru: {
     appName:'AmneziaWG Admin',
     purchase:'Покупка',
-    purchaseSub:'Оформите доступ и создайте общий заказ для подключения.',
-    purchaseLead:'Выберите срок, укажите логин и почту, затем отправьте заявку.',
-    purchaseOrderSub:'Заказ сразу уходит в общий список активных заявок.',
-    purchaseAction:'Оформить активный заказ',
+    purchaseSub:'Оформите новый заказ на подключение.',
+    purchaseLead:'Срок',
+    purchaseOrderSub:'Новый заказ',
+    purchaseAction:'Купить',
     adminPanel:'Админ-панель',
     today:'Сегодня', admin:'Админ', forever:'Бессрочно', oneDay:'1 день', threeDays:'3 дня', sevenDays:'7 дней', fifteenDays:'15 дней', oneMonth:'1 месяц', threeMonths:'3 месяца', sixMonths:'6 месяцев', oneYear:'1 год',
     online:'Онлайн', offline:'Оффлайн', recent:'Недавно', renewalPending:'Ожидает продления', checking:'Проверка сессии', signInTitle:'Вход в панель управления', login:'Логин', password:'Пароль', signIn:'Войти',
@@ -62,12 +62,12 @@ const dict = {
     orderLogin:'Логин', orderEmail:'Почта', orderLoginPlaceholder:'login123', orderEmailPlaceholder:'mail@example.com',
     addServer:'Добавить сервер', editServer:'Редактировать сервер', title:'Название', panelUrl:'URL панели', token:'Токен', saveServer:'Сохранить сервер', endpoint:'URL панели', set:'Задан',
     notSet:'Не задан', active:'Активен', inactiveEdit:'Неактивен · редактировать', select:'Выбрать', edit:'Редактировать', activeServer:'Активный сервер', dumpTitle:'Активный сервер: awg dump',
-    noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.', details:'Подробнее', lastSeen:'Последнее подключение', never:'Никогда', download:'Скачать', copyConfig:'Скопировать конфиг', received:'Загрузка', sent:'Отдача', createdClients:'Созданных клиентов', copyVless:'VLESS', vlessCopied:'VLESS скопирован',
+    noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.', details:'Подробнее', lastSeen:'Последнее подключение', never:'Никогда', download:'Скачать', copyConfig:'Скопировать конфиг', received:'Загрузка', sent:'Отдача', createdClients:'Созданных клиентов',
     contact:'Контакт', contactPlaceholder:'Email или телефон', clientId:'ID клиента', editContact:'Изменить контакт', saveContact:'Сохранить контакт',
     renew:'Продлить', renewClient:'Продлить подписку', renewConfirm:'Выберите срок продления', renewSuccess:'Подписка продлена',
-    portal:'Личный кабинет', portalTitle:'Проверить подписку', portalDesc:'Введите email или телефон, чтобы найти ваши подписки', portalSearch:'Найти подписки', portalContact:'Email или телефон', portalNotFound:'Подписки не найдены', portalActive:'Активна', portalExpired:'Истекла', portalExpires:'Действует до', portalGetConfig:'Скачать конфиг', portalShowQr:'Показать QR', portalClientId:'Введите ID клиента', portalClientIdDesc:'ID указан в вашем конфиг-файле в строке # Client ID:', portalConfigNotAvail:'Конфиг недоступен — обратитесь к администратору', portalEnterIdFirst:'Введите Client ID для получения конфига', portalCabinet:'Кабинет',
+    portal:'Личный кабинет', portalTitle:'Проверить подписку', portalDesc:'Введите email или телефон, чтобы найти ваши подписки', portalSearch:'Найти подписки', portalContact:'Email или телефон', portalNotFound:'Подписки не найдены', portalActive:'Активна', portalExpired:'Истекла', portalExpires:'Действует до', portalGetConfig:'Скачать конфиг', portalShowQr:'Показать QR', portalClientId:'Введите ID клиента', portalClientIdDesc:'ID указан в вашем конфиг-файле в строке # Client ID:', portalConfigNotAvail:'Конфиг недоступен — обратитесь к администратору', portalEnterIdFirst:'Введите Client ID для получения конфига', portalCabinet:'Кабинет', portalById:'Войти по ID клиента', portalByIdDesc:'Введите ваш Client ID для доступа к конфигу', portalByIdSearch:'Найти', portalByIdNotFound:'Клиент с таким ID не найден',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Текущая панель', deleteServer:'Удалить сервер?',
-    sortBy:'Сортировка', sortNameAsc:'Имя A-Z', sortNameDesc:'Имя Z-A', sortCreatedDesc:'Дата создания, новые', sortCreatedAsc:'Дата создания, старые', sortLastSeenDesc:'Последнее подключение, новые', sortLastSeenAsc:'Последнее подключение, старые', selectAll:'Выбрать все', clearSelection:'Снять выбор', deleteSelected:'Удалить выбранные', selectedClients:'Выбрано клиентов', createdOnly:'Дата создания', lastConnection:'Последнее подключение', deleting:'Удаление', deleted:'Удалено', bulkActions:'Действия группы', bulkReady:'Можно удалять выбранных', purchase:'Покупка', purchaseSub:'', purchaseLead:'', purchaseOrderSub:'', purchaseAction:'', adminPanel:'Админ-панель'
+    sortBy:'Сортировка', sortNameAsc:'Имя A-Z', sortNameDesc:'Имя Z-A', sortCreatedDesc:'Дата создания, новые', sortCreatedAsc:'Дата создания, старые', sortLastSeenDesc:'Последнее подключение, новые', sortLastSeenAsc:'Последнее подключение, старые', selectAll:'Выбрать все', clearSelection:'Снять выбор', deleteSelected:'Удалить выбранные', selectedClients:'Выбрано клиентов', createdOnly:'Дата создания', lastConnection:'Последнее подключение', deleting:'Удаление', deleted:'Удалено', bulkActions:'Действия группы', bulkReady:'Можно удалять выбранных', editExpiry:'Изменить дату окончания', clearExpiry:'Без ограничений'
   },
   us: {
     appName:'AmneziaWG Admin',
@@ -93,12 +93,12 @@ const dict = {
     orderLogin:'Login', orderEmail:'Email', orderLoginPlaceholder:'login123', orderEmailPlaceholder:'mail@example.com',
     addServer:'Add server', editServer:'Edit server', title:'Title', panelUrl:'Panel URL', token:'Token', saveServer:'Save server', endpoint:'Panel URL', set:'Set',
     notSet:'Not set', active:'Active', inactiveEdit:'Inactive · edit', select:'Select', edit:'Edit', activeServer:'Active server', dumpTitle:'Active server: awg dump',
-    noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.', details:'Details', lastSeen:'Last connected', never:'Never', download:'Download', copyConfig:'Copy config', received:'Received', sent:'Sent', createdClients:'Created clients', copyVless:'VLESS', vlessCopied:'VLESS copied',
+    noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.', details:'Details', lastSeen:'Last connected', never:'Never', download:'Download', copyConfig:'Copy config', received:'Received', sent:'Sent', createdClients:'Created clients',
     contact:'Contact', contactPlaceholder:'Email or phone', clientId:'Client ID', editContact:'Edit contact', saveContact:'Save contact',
     renew:'Renew', renewClient:'Renew subscription', renewConfirm:'Select renewal term', renewSuccess:'Subscription renewed',
-    portal:'My Account', portalTitle:'Check your subscription', portalDesc:'Enter your email or phone to find your subscriptions', portalSearch:'Find subscriptions', portalContact:'Email or phone', portalNotFound:'No subscriptions found', portalActive:'Active', portalExpired:'Expired', portalExpires:'Valid until', portalGetConfig:'Download config', portalShowQr:'Show QR', portalClientId:'Enter Client ID', portalClientIdDesc:'Your Client ID is in your config file on the line # Client ID:', portalConfigNotAvail:'Config not available — contact your administrator', portalEnterIdFirst:'Enter Client ID to get config', portalCabinet:'Account',
+    portal:'My Account', portalTitle:'Check your subscription', portalDesc:'Enter your email or phone to find your subscriptions', portalSearch:'Find subscriptions', portalContact:'Email or phone', portalNotFound:'No subscriptions found', portalActive:'Active', portalExpired:'Expired', portalExpires:'Valid until', portalGetConfig:'Download config', portalShowQr:'Show QR', portalClientId:'Enter Client ID', portalClientIdDesc:'Your Client ID is in your config file on the line # Client ID:', portalConfigNotAvail:'Config not available — contact your administrator', portalEnterIdFirst:'Enter Client ID to get config', portalCabinet:'Account', portalById:'Sign in by Client ID', portalByIdDesc:'Enter your Client ID to access your config', portalByIdSearch:'Find', portalByIdNotFound:'No client found with this ID',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Current panel', deleteServer:'Delete server?',
-    sortBy:'Sort', sortNameAsc:'Name A-Z', sortNameDesc:'Name Z-A', sortCreatedDesc:'Created newest', sortCreatedAsc:'Created oldest', sortLastSeenDesc:'Last connected newest', sortLastSeenAsc:'Last connected oldest', selectAll:'Select all', clearSelection:'Clear selection', deleteSelected:'Delete selected', selectedClients:'Selected clients', createdOnly:'Created date', lastConnection:'Last connected', deleting:'Deleting', deleted:'Deleted', bulkActions:'Group actions', bulkReady:'Ready to delete selected', purchase:'Purchase', purchaseSub:'', purchaseLead:'', purchaseOrderSub:'', purchaseAction:'', adminPanel:'Admin panel'
+    sortBy:'Sort', sortNameAsc:'Name A-Z', sortNameDesc:'Name Z-A', sortCreatedDesc:'Created newest', sortCreatedAsc:'Created oldest', sortLastSeenDesc:'Last connected newest', sortLastSeenAsc:'Last connected oldest', selectAll:'Select all', clearSelection:'Clear selection', deleteSelected:'Delete selected', selectedClients:'Selected clients', createdOnly:'Created date', lastConnection:'Last connected', deleting:'Deleting', deleted:'Deleted', bulkActions:'Group actions', bulkReady:'Ready to delete selected', editExpiry:'Edit expiry date', clearExpiry:'No limit'
   }
 };
 
@@ -107,19 +107,21 @@ const dateLabel = (key, lang='ru') => {
   if (key === today) return dict[lang].today;
   return new Date(`${key}T00:00:00`).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {day:'2-digit', month:'2-digit'});
 };
-const formatDate = (key, lang='ru') => key ? new Date(`${key}T00:00:00`).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {day:'2-digit', month:'2-digit', year:'numeric'}) : '—';
-const formatAnyDate = (value, lang='ru') => {
+const fmtDMY = (d) => `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+const fmtDMYHM = (d) => `${fmtDMY(d)} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+const formatDate = (key) => { if (!key) return '—'; const d = new Date(`${key}T00:00:00`); return Number.isNaN(d.getTime()) ? String(key) : fmtDMY(d); };
+const formatAnyDate = (value) => {
   if (!value) return '—';
-  const normalized = String(value).includes('T') ? String(value) : `${value}T00:00:00`;
-  const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString(lang === 'ru' ? 'ru-RU' : 'en-US', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
+  const hasTime = String(value).includes('T');
+  const d = new Date(hasTime ? String(value) : `${value}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return hasTime ? fmtDMYHM(d) : fmtDMY(d);
 };
-const formatDateTime = (seconds, lang='ru') => {
+const formatDateTime = (seconds) => {
   if (!seconds) return '—';
-  const date = new Date(seconds * 1000);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString(lang === 'ru' ? 'ru-RU' : 'en-US', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
+  const d = new Date(seconds * 1000);
+  if (Number.isNaN(d.getTime())) return '—';
+  return fmtDMYHM(d);
 };
 const isExpired = (key) => key ? key < dateKey() : false;
 const clientTerms = [
@@ -261,19 +263,24 @@ function App(){
   const [editingClientName,setEditingClientName]=useState('');
   const [editingContactKey,setEditingContactKey]=useState('');
   const [editingContactValue,setEditingContactValue]=useState('');
+  const [editingExpiryKey,setEditingExpiryKey]=useState('');
+  const [editingExpiryValue,setEditingExpiryValue]=useState('');
   const [renewingClientKey,setRenewingClientKey]=useState('');
   const [renewTerm,setRenewTerm]=useState('1m');
   const [processingOrderIds,setProcessingOrderIds]=useState(()=>new Set());
   const [portalContact,setPortalContact]=useState('');
   const [portalClients,setPortalClients]=useState(null);
   const [portalLoading,setPortalLoading]=useState(false);
+  const [portalDirectId,setPortalDirectId]=useState('');
+  const [portalDirectClient,setPortalDirectClient]=useState(undefined);
+  const [portalDirectConfig,setPortalDirectConfig]=useState('');
+  const [portalDirectQr,setPortalDirectQr]=useState(false);
+  const [portalDirectLoading,setPortalDirectLoading]=useState(false);
   const [portalClientIds,setPortalClientIds]=useState({});
   const [portalConfigs,setPortalConfigs]=useState({});
   const [portalQrVisible,setPortalQrVisible]=useState({});
   const [expandedClientKey,setExpandedClientKey]=useState('');
   const [expandedServerId,setExpandedServerId]=useState('');
-  const [vlessQrKey,setVlessQrKey]=useState('');
-  const [vlessQrUri,setVlessQrUri]=useState('');
   const [expandedOrderId,setExpandedOrderId]=useState('');
   const [showOrderForm,setShowOrderForm]=useState(false);
   const [selectedClientKeys,setSelectedClientKeys]=useState(()=>new Set());
@@ -392,13 +399,6 @@ function App(){
     const query = serverId ? `&server_id=${encodeURIComponent(serverId)}` : '';
     const r=await api(`/api/client-config?public_key=${encodeURIComponent(publicKey)}${query}`);
     return await r.text();
-  };
-  const copyVlessUri=async(publicKey, serverId=activeServerId)=>{
-    const query = serverId ? `&server_id=${encodeURIComponent(serverId)}` : '';
-    const r=await api(`/api/client-singbox-config?public_key=${encodeURIComponent(publicKey)}${query}`);
-    if(!r.ok) throw new Error(await r.text());
-    const uri=await r.text();
-    await copyText(uri.trim(), t('vlessCopied'));
   };
   const copyText=async(text, success='Скопировано')=>{
     const value = String(text || '');
@@ -531,6 +531,39 @@ function App(){
       setTimeout(()=>setNotice(''),2500);
       await loadClients(serverId);
     }finally{ setClientPending(key,false); }
+  };
+  const beginEditExpiry=(client)=>{
+    setEditingExpiryKey(clientRowKey(client));
+    setEditingExpiryValue(client.expiresAt||'');
+  };
+  const cancelEditExpiry=()=>{ setEditingExpiryKey(''); setEditingExpiryValue(''); };
+  const saveExpiry=async(client, expiresAt=editingExpiryValue)=>{
+    const serverId=client.serverId||activeServerId;
+    await api(`/api/clients/${encodeURIComponent(client.PublicKey)}/expiry?server_id=${encodeURIComponent(serverId)}`,{method:'PATCH',body:JSON.stringify({expiresAt})});
+    cancelEditExpiry();
+    await loadClients(serverId);
+  };
+  const portalLookupById=async()=>{
+    const cid=portalDirectId.trim();
+    if(!cid) return;
+    setPortalDirectLoading(true);
+    setPortalDirectClient(undefined);
+    setPortalDirectConfig('');
+    setPortalDirectQr(false);
+    try{
+      const r=await fetch(`/api/portal/lookup-by-id?client_id=${encodeURIComponent(cid)}`);
+      const j=await r.json();
+      setPortalDirectClient(j.client||null);
+    }catch{ setPortalDirectClient(null); }
+    finally{ setPortalDirectLoading(false); }
+  };
+  const portalFetchConfigById=async()=>{
+    const cid=portalDirectId.trim();
+    try{
+      const r=await fetch(`/api/portal/config-by-id?client_id=${encodeURIComponent(cid)}`);
+      if(!r.ok){ alert(t('portalConfigNotAvail')); return; }
+      setPortalDirectConfig(await r.text());
+    }catch{ alert(t('portalConfigNotAvail')); }
   };
   const portalLookup=async()=>{
     if(!portalContact.trim()) return;
@@ -920,7 +953,7 @@ function App(){
   const clientPeerStat = (client)=>peerStatsByKey[client?.PublicKey] || null;
   const lastSeenText = (client)=>{
     const latest = clientPeerStat(client)?.latest;
-    return latest ? formatDateTime(latest, lang) : t('never');
+    return latest ? formatDateTime(latest) : t('never');
   };
   const isClientSelected = (key) => selectedClientKeys.has(key);
   const applyClientSelection = (key, selected) => {
@@ -1116,7 +1149,21 @@ function App(){
         <div className="detail-title">{client.name || '—'}</div>
         <div className="detail-grid">
           <div><span>{t('lastSeen')}</span><strong>{lastSeenText(client)}</strong></div>
-          <div><span>{t('createdOnly')}</span><strong>{formatAnyDate(client.createdAt, lang)}</strong></div>
+          <div><span>{t('createdOnly')}</span><strong>{formatAnyDate(client.createdAt)}</strong></div>
+          {!client.blocked && <div><span>{t('expires')}</span>
+            {editingExpiryKey===clientRowKey(client)
+              ? <span className="inline-edit">
+                  <input type="date" value={editingExpiryValue} onChange={e=>setEditingExpiryValue(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') saveExpiry(client).catch(handleError); if(e.key==='Escape') cancelEditExpiry(); }} autoFocus />
+                  <button className="secondary icon-button" title={t('clearExpiry')} onClick={()=>saveExpiry(client,'').catch(handleError)} style={{fontSize:'11px',padding:'2px 6px'}}>∞</button>
+                  <button className="secondary icon-button" title={t('save')} onClick={()=>saveExpiry(client).catch(handleError)}><Check size={16}/></button>
+                  <button className="secondary icon-button" title={t('cancel')} onClick={cancelEditExpiry}><X size={16}/></button>
+                </span>
+              : <span className="contact-display">
+                  <strong>{client.expiresAt ? formatDate(client.expiresAt) : t('forever')}</strong>
+                  <button className="secondary icon-button" title={t('editExpiry')} onClick={()=>beginEditExpiry(client)}><Pencil size={16}/></button>
+                </span>
+            }
+          </div>}
           <div><span>{t('server')}</span><strong>{clientServerName(client)}</strong></div>
           <div><span>{t('received')}</span><strong>{formatMb(stat?.rx || 0)}</strong></div>
           <div><span>{t('sent')}</span><strong>{formatMb(stat?.tx || 0)}</strong></div>
@@ -1140,19 +1187,6 @@ function App(){
         <div className="detail-actions">
           <button className="secondary" onClick={()=>copyClientConfig(client.PublicKey, client.serverId).catch(handleError)}><Clipboard size={16}/>{t('copyConfig')}</button>
           <button className="secondary" onClick={()=>downloadClientConfig(client.PublicKey, client.name||'client', client.serverId).catch(handleError)}><Download size={16}/>{t('download')}</button>
-          <button className="secondary" title="Copy VLESS URI" onClick={()=>copyVlessUri(client.PublicKey, client.serverId).catch(handleError)}><Clipboard size={16}/>{t('copyVless')}</button>
-          <button className="secondary" title="Show VLESS QR" onClick={async()=>{
-            const key=clientRowKey(client);
-            if(vlessQrKey===key){setVlessQrKey('');setVlessQrUri('');return;}
-            try{
-              const query=client.serverId?`&server_id=${encodeURIComponent(client.serverId)}`:'';
-              const r=await api(`/api/client-singbox-config?public_key=${encodeURIComponent(client.PublicKey)}${query}`);
-              if(!r.ok)throw new Error(await r.text());
-              setVlessQrUri((await r.text()).trim());
-              setVlessQrKey(key);
-            }catch(e){handleError(e);}
-          }}><QrCode size={16}/>QR</button>
-          {vlessQrKey===clientRowKey(client) && vlessQrUri && <div style={{marginTop:'8px',width:'100%'}}><QRCanvas text={vlessQrUri} size={200}/></div>}
           {client.blocked && renewingClientKey!==clientRowKey(client) && <button className="secondary" onClick={()=>{setRenewingClientKey(clientRowKey(client));setRenewTerm('1m');}}><RotateCcw size={16}/>{t('renew')}</button>}
           {renewingClientKey===clientRowKey(client) && <span className="inline-edit">
             <select value={renewTerm} onChange={e=>setRenewTerm(e.target.value)}>
@@ -1191,6 +1225,33 @@ function App(){
       <button className="secondary public-admin-link" onClick={()=>navigate('/')}>{t('home')}</button>
     </section>
     <section className="public-layout portal-layout">
+      <div className="card portal-search-card">
+        <div className="panel-head"><div><h2>{t('portalById')}</h2><p>{t('portalByIdDesc')}</p></div></div>
+        <div className="client-form-grid">
+          <label>Client ID<input value={portalDirectId} onChange={e=>setPortalDirectId(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') portalLookupById().catch(()=>{}); }} placeholder="a3f2b1c4" /></label>
+        </div>
+        <button onClick={()=>portalLookupById().catch(()=>{})} disabled={portalDirectLoading||!portalDirectId.trim()}>{portalDirectLoading?<Loader2 size={16} className="spin-icon"/>:<CheckCircle2 size={16}/>}{t('portalByIdSearch')}</button>
+        {portalDirectClient===null && <p className="portal-no-config">{t('portalByIdNotFound')}</p>}
+        {portalDirectClient && <div className="card portal-client-card" style={{marginTop:'12px'}}>
+          <div className="portal-client-header">
+            <strong>{portalDirectClient.name||'—'}</strong>
+            <span className={`badge ${portalDirectClient.status==='active'?'ok':'expired'}`}>{portalDirectClient.status==='active'?t('portalActive'):t('portalExpired')}</span>
+          </div>
+          {portalDirectClient.expiresAt && <div className="portal-client-meta"><span>{t('portalExpires')}:</span> <strong>{portalDirectClient.expiresAt}</strong></div>}
+          {portalDirectClient.hasConfig && !portalDirectConfig && <div className="portal-config-actions" style={{marginTop:'8px'}}>
+            <button onClick={()=>portalFetchConfigById().catch(()=>{})}><Download size={16}/>{t('portalGetConfig')}</button>
+          </div>}
+          {portalDirectConfig && <>
+            <div className="portal-config-actions">
+              <button className="secondary" onClick={()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([portalDirectConfig],{type:'text/plain'})); a.download=`${portalDirectClient.name||'client'}.conf`; a.click(); }}><Download size={16}/>{t('download')}</button>
+              <button className="secondary" onClick={()=>navigator.clipboard.writeText(portalDirectConfig).catch(()=>{})}><Clipboard size={16}/>{t('copyConfig')}</button>
+              <button className="secondary" onClick={()=>setPortalDirectQr(v=>!v)}><QrCode size={16}/>{t('portalShowQr')}</button>
+            </div>
+            {portalDirectQr && <div className="portal-qr"><QRCanvas text={portalDirectConfig} size={240}/></div>}
+          </>}
+          {!portalDirectClient.hasConfig && <p className="portal-no-config">{t('portalConfigNotAvail')}</p>}
+        </div>}
+      </div>
       <div className="card portal-search-card">
         <div className="panel-head"><div><h2>{t('portalTitle')}</h2><p>{t('portalDesc')}</p></div></div>
         <div className="client-form-grid">
@@ -1412,7 +1473,7 @@ function App(){
             <td data-label={t('name')} onClick={event=>{ event.stopPropagation(); if(editingClientKey!==key){ setExpandedClientKey(expandedClientKey===key?'':key); } }}>{renderClientName(c)}</td>
             <td data-label={t('server')}>{clientServerName(c)}</td>
             <td data-label={t('status')}><span className={`badge ${status.className}`}>{status.label}</span></td>
-            <td data-label={t('expires')}>{c.expiresAt ? <span className={`badge ${isExpired(c.expiresAt) ? 'expired' : 'muted'}`}>{formatDate(c.expiresAt, lang)}</span> : <span className="badge admin">{t('forever')}</span>}</td>
+            <td data-label={t('expires')}>{c.expiresAt ? <span className={`badge ${isExpired(c.expiresAt) ? 'expired' : 'muted'}`}>{formatDate(c.expiresAt)}</span> : <span className="badge admin">{t('forever')}</span>}</td>
             <td data-label={t('lastConnection')}>{lastSeenText(c)}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
           </tr>{expandedClientKey === key && renderClientDetails(c, 6)}</React.Fragment> })}
@@ -1426,9 +1487,9 @@ function App(){
             <td data-label={t('name')} onClick={event=>{ event.stopPropagation(); if(editingClientKey!==key){ setExpandedClientKey(expandedClientKey===key?'':key); } }}>{renderClientName(c)}</td>
             <td data-label={t('server')}>{clientServerName(c)}</td>
             <td data-label={t('status')}><span className="badge expired">{t('renewalPending')}</span></td>
-            <td data-label={t('expires')}>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('forever')}</span>}</td>
+            <td data-label={t('expires')}>{c.expiresAt ? formatDate(c.expiresAt) : <span className="badge admin">{t('forever')}</span>}</td>
             <td data-label={t('lastConnection')}>{lastSeenText(c)}</td>
-            <td data-label={t('blockedAt')}>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
+            <td data-label={t('blockedAt')}>{c.blockedAt ? formatDate(c.blockedAt) : '—'}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
           </tr>{expandedClientKey === key && renderClientDetails(c, 7)}</React.Fragment>})}
         </tbody></table>
@@ -1446,9 +1507,9 @@ function App(){
             <td data-label={t('name')} onClick={event=>{ event.stopPropagation(); if(editingClientKey!==key){ setExpandedClientKey(expandedClientKey===key?'':key); } }}>{renderClientName(c)}</td>
             <td data-label={t('server')}>{clientServerName(c)}</td>
             <td data-label={t('status')}><span className="badge expired">{t('renewalPending')}</span></td>
-            <td data-label={t('expires')}>{c.expiresAt ? formatDate(c.expiresAt, lang) : <span className="badge admin">{t('forever')}</span>}</td>
+            <td data-label={t('expires')}>{c.expiresAt ? formatDate(c.expiresAt) : <span className="badge admin">{t('forever')}</span>}</td>
             <td data-label={t('lastConnection')}>{lastSeenText(c)}</td>
-            <td data-label={t('blockedAt')}>{c.blockedAt ? formatDate(c.blockedAt, lang) : '—'}</td>
+            <td data-label={t('blockedAt')}>{c.blockedAt ? formatDate(c.blockedAt) : '—'}</td>
             <td className="table-actions">{renderClientActions(c)}</td>
           </tr>{expandedClientKey === key && renderClientDetails(c, 7)}</React.Fragment>})}
         </tbody></table>
@@ -1512,7 +1573,7 @@ function App(){
                       <td data-label={t('orderEmail')} className="mono">{o.email||'—'}</td>
                       <td data-label={t('term')}><span className="badge admin">{o.term}</span></td>
                       <td data-label={t('status')}><span className={`badge ${orderStatusClass(o.status)}`}>{t(ns)}</span></td>
-                      <td data-label={t('created')} className="muted-text">{formatAnyDate(o.created, lang)}</td>
+                      <td data-label={t('created')} className="muted-text">{formatAnyDate(o.created)}</td>
                       <td className="table-actions" onClick={e=>e.stopPropagation()}>
                         {ns==='pending' && <button className="secondary icon-button" title={t('processOrder')} disabled={processingOrderIds.has(o.id)} onClick={()=>processOrder(o.id).catch(handleError)}><Play size={16}/></button>}
                         <button className="secondary icon-button" onClick={()=>setExpandedOrderId(expanded?'':o.id)}><ChevronDown className={expanded?'rotated':''} size={16}/></button>
@@ -1524,9 +1585,9 @@ function App(){
                         <div><span>{t('orderLogin')}</span><strong>{o.login}</strong></div>
                         <div><span>{t('orderEmail')}</span><strong className="mono">{o.email||'—'}</strong></div>
                         <div><span>{t('term')}</span><strong>{o.term}</strong></div>
-                        <div><span>{t('created')}</span><strong>{formatAnyDate(o.created, lang)}</strong></div>
+                        <div><span>{t('created')}</span><strong>{formatAnyDate(o.created)}</strong></div>
                         {o.serverName && <div><span>{t('orderServer')}</span><strong>{o.serverName}</strong></div>}
-                        {o.processedAt && <div><span>{t('processedAt')}</span><strong>{formatAnyDate(o.processedAt, lang)}</strong></div>}
+                        {o.processedAt && <div><span>{t('processedAt')}</span><strong>{formatAnyDate(o.processedAt)}</strong></div>}
                         {o.clientPublicKey && <div><span>{t('client')}</span><strong className="mono" style={{fontSize:'0.75em',wordBreak:'break-all'}}>{o.clientPublicKey}</strong></div>}
                       </div>
                       <div className="detail-actions">
