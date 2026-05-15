@@ -1154,6 +1154,7 @@ function App(){
             {editingExpiryKey===clientRowKey(client)
               ? <span className="inline-edit">
                   <input type="date" value={editingExpiryValue} onChange={e=>setEditingExpiryValue(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') saveExpiry(client).catch(handleError); if(e.key==='Escape') cancelEditExpiry(); }} autoFocus />
+                  <button className="secondary icon-button" title="−1 день" onClick={()=>{ const d=new Date(); d.setDate(d.getDate()-1); setEditingExpiryValue(d.toISOString().slice(0,10)); }} style={{fontSize:'11px',padding:'2px 6px'}}>−1д</button>
                   <button className="secondary icon-button" title={t('clearExpiry')} onClick={()=>saveExpiry(client,'').catch(handleError)} style={{fontSize:'11px',padding:'2px 6px'}}>∞</button>
                   <button className="secondary icon-button" title={t('save')} onClick={()=>saveExpiry(client).catch(handleError)}><Check size={16}/></button>
                   <button className="secondary icon-button" title={t('cancel')} onClick={cancelEditExpiry}><X size={16}/></button>
