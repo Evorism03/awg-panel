@@ -367,6 +367,9 @@ main.public-page{max-width:1280px;padding:24px 24px 36px}
 .detail-title{font-size:20px;font-weight:900;line-height:1.15;color:#ffffff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inline-edit{display:flex;align-items:center;gap:6px;min-width:0}
 .inline-edit input{min-width:0;padding:9px 10px}
+.expiry-edit-wrap{display:flex;flex-direction:column;gap:0;min-width:0}
+.expiry-edit-wrap input{min-width:0;padding:9px 10px}
+.expiry-edit-actions{display:flex;align-items:center;gap:6px;margin-top:6px}
 
 /* ─── Icon buttons ─── */
 .icon-button{min-height:34px;min-width:34px;width:34px;padding:0;flex-shrink:0}
