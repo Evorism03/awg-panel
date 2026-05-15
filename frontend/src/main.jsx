@@ -272,6 +272,8 @@ function App(){
   const [portalQrVisible,setPortalQrVisible]=useState({});
   const [expandedClientKey,setExpandedClientKey]=useState('');
   const [expandedServerId,setExpandedServerId]=useState('');
+  const [vlessQrKey,setVlessQrKey]=useState('');
+  const [vlessQrUri,setVlessQrUri]=useState('');
   const [expandedOrderId,setExpandedOrderId]=useState('');
   const [showOrderForm,setShowOrderForm]=useState(false);
   const [selectedClientKeys,setSelectedClientKeys]=useState(()=>new Set());
@@ -1138,7 +1140,19 @@ function App(){
         <div className="detail-actions">
           <button className="secondary" onClick={()=>copyClientConfig(client.PublicKey, client.serverId).catch(handleError)}><Clipboard size={16}/>{t('copyConfig')}</button>
           <button className="secondary" onClick={()=>downloadClientConfig(client.PublicKey, client.name||'client', client.serverId).catch(handleError)}><Download size={16}/>{t('download')}</button>
-          <button className="secondary" title="Copy VLESS URI for Amnezia app" onClick={()=>copyVlessUri(client.PublicKey, client.serverId).catch(handleError)}><Clipboard size={16}/>{t('copyVless')}</button>
+          <button className="secondary" title="Copy VLESS URI" onClick={()=>copyVlessUri(client.PublicKey, client.serverId).catch(handleError)}><Clipboard size={16}/>{t('copyVless')}</button>
+          <button className="secondary" title="Show VLESS QR" onClick={async()=>{
+            const key=clientRowKey(client);
+            if(vlessQrKey===key){setVlessQrKey('');setVlessQrUri('');return;}
+            try{
+              const query=client.serverId?`&server_id=${encodeURIComponent(client.serverId)}`:'';
+              const r=await api(`/api/client-singbox-config?public_key=${encodeURIComponent(client.PublicKey)}${query}`);
+              if(!r.ok)throw new Error(await r.text());
+              setVlessQrUri((await r.text()).trim());
+              setVlessQrKey(key);
+            }catch(e){handleError(e);}
+          }}><QrCode size={16}/>QR</button>
+          {vlessQrKey===clientRowKey(client) && vlessQrUri && <div style={{marginTop:'8px',width:'100%'}}><QRCanvas text={vlessQrUri} size={200}/></div>}
           {client.blocked && renewingClientKey!==clientRowKey(client) && <button className="secondary" onClick={()=>{setRenewingClientKey(clientRowKey(client));setRenewTerm('1m');}}><RotateCcw size={16}/>{t('renew')}</button>}
           {renewingClientKey===clientRowKey(client) && <span className="inline-edit">
             <select value={renewTerm} onChange={e=>setRenewTerm(e.target.value)}>
