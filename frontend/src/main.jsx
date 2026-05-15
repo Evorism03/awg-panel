@@ -265,6 +265,7 @@ function App(){
   const [editingContactValue,setEditingContactValue]=useState('');
   const [editingExpiryKey,setEditingExpiryKey]=useState('');
   const [editingExpiryValue,setEditingExpiryValue]=useState('');
+  const editingExpiryValueRef=useRef('');
   const [renewingClientKey,setRenewingClientKey]=useState('');
   const [renewTerm,setRenewTerm]=useState('1m');
   const [processingOrderIds,setProcessingOrderIds]=useState(()=>new Set());
@@ -533,13 +534,17 @@ function App(){
     }finally{ setClientPending(key,false); }
   };
   const beginEditExpiry=(client)=>{
+    const v=client.expiresAt||'';
+    editingExpiryValueRef.current=v;
     setEditingExpiryKey(clientRowKey(client));
-    setEditingExpiryValue(client.expiresAt||'');
+    setEditingExpiryValue(v);
   };
-  const cancelEditExpiry=()=>{ setEditingExpiryKey(''); setEditingExpiryValue(''); };
-  const saveExpiry=async(client, expiresAt=editingExpiryValue)=>{
+  const cancelEditExpiry=()=>{ editingExpiryValueRef.current=''; setEditingExpiryKey(''); setEditingExpiryValue(''); };
+  const setExpiryValue=(v)=>{ editingExpiryValueRef.current=v; setEditingExpiryValue(v); };
+  const saveExpiry=async(client, expiresAt)=>{
+    const val = expiresAt !== undefined ? expiresAt : editingExpiryValueRef.current;
     const serverId=client.serverId||activeServerId;
-    await api(`/api/clients/${encodeURIComponent(client.PublicKey)}/expiry?server_id=${encodeURIComponent(serverId)}`,{method:'PATCH',body:JSON.stringify({expiresAt})});
+    await api(`/api/clients/${encodeURIComponent(client.PublicKey)}/expiry?server_id=${encodeURIComponent(serverId)}`,{method:'PATCH',body:JSON.stringify({expiresAt:val})});
     cancelEditExpiry();
     await loadClients(serverId);
   };
@@ -1153,11 +1158,11 @@ function App(){
           {!client.blocked && <div><span>{t('expires')}</span>
             {editingExpiryKey===clientRowKey(client)
               ? <span className="expiry-edit-wrap">
-                  <input type="date" value={editingExpiryValue} onChange={e=>setEditingExpiryValue(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') saveExpiry(client,editingExpiryValue).catch(handleError); if(e.key==='Escape') cancelEditExpiry(); }} autoFocus />
+                  <input type="date" value={editingExpiryValue} onChange={e=>setExpiryValue(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') saveExpiry(client).catch(handleError); if(e.key==='Escape') cancelEditExpiry(); }} autoFocus />
                   <span className="expiry-edit-actions">
-                    <button className="secondary icon-button" title="−1 день" onClick={()=>{ const d=new Date(); d.setDate(d.getDate()-1); setEditingExpiryValue(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`); }} style={{fontSize:'11px',padding:'2px 8px'}}>−1д</button>
+                    <button className="secondary icon-button" title="−1 день" onClick={()=>{ const d=new Date(); d.setDate(d.getDate()-1); setExpiryValue(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`); }} style={{fontSize:'11px',padding:'2px 8px'}}>−1д</button>
                     <button className="secondary icon-button" title={t('clearExpiry')} onClick={()=>saveExpiry(client,'').catch(handleError)} style={{fontSize:'11px',padding:'2px 8px'}}>∞</button>
-                    <button className="secondary icon-button" title={t('save')} onClick={()=>saveExpiry(client,editingExpiryValue).catch(handleError)}><Check size={16}/></button>
+                    <button className="secondary icon-button" title={t('save')} onClick={()=>saveExpiry(client).catch(handleError)}><Check size={16}/></button>
                     <button className="secondary icon-button" title={t('cancel')} onClick={cancelEditExpiry}><X size={16}/></button>
                   </span>
                 </span>

@@ -378,6 +378,14 @@ def attach_meta_to_peers(peers: list[dict]) -> list[dict]:
             m["createdAt"] = created_at
             meta[pk] = m
             changed = True
+        # Patch stored config to include # Client ID: so portal download works for old clients
+        if not m.get("configPatched"):
+            export = load_client_export(pk)
+            if export is not None and f"# Client ID: {client_id}" not in export:
+                store_client_export(pk, peer.get("name", ""), f"# Client ID: {client_id}\n{export.lstrip()}")
+            m["configPatched"] = True
+            meta[pk] = m
+            changed = True
     if changed:
         save_clients_meta(meta)
     return peers
