@@ -62,7 +62,7 @@ const dict = {
     orderLogin:'Логин', orderEmail:'Почта', orderLoginPlaceholder:'login123', orderEmailPlaceholder:'mail@example.com',
     addServer:'Добавить сервер', editServer:'Редактировать сервер', title:'Название', panelUrl:'URL панели', token:'Токен', saveServer:'Сохранить сервер', endpoint:'URL панели', set:'Задан',
     notSet:'Не задан', active:'Активен', inactiveEdit:'Неактивен · редактировать', select:'Выбрать', edit:'Редактировать', activeServer:'Активный сервер', dumpTitle:'Активный сервер: awg dump',
-    noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.', details:'Подробнее', lastSeen:'Последнее подключение', never:'Никогда', download:'Скачать', copyConfig:'Скопировать конфиг', received:'Загрузка', sent:'Отдача', createdClients:'Созданных клиентов',
+    noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.', details:'Подробнее', lastSeen:'Последнее подключение', never:'Никогда', download:'Скачать', copyConfig:'Скопировать конфиг', received:'Загрузка', sent:'Отдача', createdClients:'Созданных клиентов', copyVless:'VLESS', vlessCopied:'VLESS скопирован',
     contact:'Контакт', contactPlaceholder:'Email или телефон', clientId:'ID клиента', editContact:'Изменить контакт', saveContact:'Сохранить контакт',
     renew:'Продлить', renewClient:'Продлить подписку', renewConfirm:'Выберите срок продления', renewSuccess:'Подписка продлена',
     portal:'Личный кабинет', portalTitle:'Проверить подписку', portalDesc:'Введите email или телефон, чтобы найти ваши подписки', portalSearch:'Найти подписки', portalContact:'Email или телефон', portalNotFound:'Подписки не найдены', portalActive:'Активна', portalExpired:'Истекла', portalExpires:'Действует до', portalGetConfig:'Скачать конфиг', portalShowQr:'Показать QR', portalClientId:'Введите ID клиента', portalClientIdDesc:'ID указан в вашем конфиг-файле в строке # Client ID:', portalConfigNotAvail:'Конфиг недоступен — обратитесь к администратору', portalEnterIdFirst:'Введите Client ID для получения конфига', portalCabinet:'Кабинет',
@@ -93,7 +93,7 @@ const dict = {
     orderLogin:'Login', orderEmail:'Email', orderLoginPlaceholder:'login123', orderEmailPlaceholder:'mail@example.com',
     addServer:'Add server', editServer:'Edit server', title:'Title', panelUrl:'Panel URL', token:'Token', saveServer:'Save server', endpoint:'Panel URL', set:'Set',
     notSet:'Not set', active:'Active', inactiveEdit:'Inactive · edit', select:'Select', edit:'Edit', activeServer:'Active server', dumpTitle:'Active server: awg dump',
-    noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.', details:'Details', lastSeen:'Last connected', never:'Never', download:'Download', copyConfig:'Copy config', received:'Received', sent:'Sent', createdClients:'Created clients',
+    noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.', details:'Details', lastSeen:'Last connected', never:'Never', download:'Download', copyConfig:'Copy config', received:'Received', sent:'Sent', createdClients:'Created clients', copyVless:'VLESS', vlessCopied:'VLESS copied',
     contact:'Contact', contactPlaceholder:'Email or phone', clientId:'Client ID', editContact:'Edit contact', saveContact:'Save contact',
     renew:'Renew', renewClient:'Renew subscription', renewConfirm:'Select renewal term', renewSuccess:'Subscription renewed',
     portal:'My Account', portalTitle:'Check your subscription', portalDesc:'Enter your email or phone to find your subscriptions', portalSearch:'Find subscriptions', portalContact:'Email or phone', portalNotFound:'No subscriptions found', portalActive:'Active', portalExpired:'Expired', portalExpires:'Valid until', portalGetConfig:'Download config', portalShowQr:'Show QR', portalClientId:'Enter Client ID', portalClientIdDesc:'Your Client ID is in your config file on the line # Client ID:', portalConfigNotAvail:'Config not available — contact your administrator', portalEnterIdFirst:'Enter Client ID to get config', portalCabinet:'Account',
@@ -390,6 +390,13 @@ function App(){
     const query = serverId ? `&server_id=${encodeURIComponent(serverId)}` : '';
     const r=await api(`/api/client-config?public_key=${encodeURIComponent(publicKey)}${query}`);
     return await r.text();
+  };
+  const copyVlessUri=async(publicKey, serverId=activeServerId)=>{
+    const query = serverId ? `&server_id=${encodeURIComponent(serverId)}` : '';
+    const r=await api(`/api/client-singbox-config?public_key=${encodeURIComponent(publicKey)}${query}`);
+    if(!r.ok) throw new Error(await r.text());
+    const uri=await r.text();
+    await copyText(uri.trim(), t('vlessCopied'));
   };
   const copyText=async(text, success='Скопировано')=>{
     const value = String(text || '');
@@ -1131,6 +1138,7 @@ function App(){
         <div className="detail-actions">
           <button className="secondary" onClick={()=>copyClientConfig(client.PublicKey, client.serverId).catch(handleError)}><Clipboard size={16}/>{t('copyConfig')}</button>
           <button className="secondary" onClick={()=>downloadClientConfig(client.PublicKey, client.name||'client', client.serverId).catch(handleError)}><Download size={16}/>{t('download')}</button>
+          <button className="secondary" title="Copy VLESS URI for Amnezia app" onClick={()=>copyVlessUri(client.PublicKey, client.serverId).catch(handleError)}><Clipboard size={16}/>{t('copyVless')}</button>
           {client.blocked && renewingClientKey!==clientRowKey(client) && <button className="secondary" onClick={()=>{setRenewingClientKey(clientRowKey(client));setRenewTerm('1m');}}><RotateCcw size={16}/>{t('renew')}</button>}
           {renewingClientKey===clientRowKey(client) && <span className="inline-edit">
             <select value={renewTerm} onChange={e=>setRenewTerm(e.target.value)}>
