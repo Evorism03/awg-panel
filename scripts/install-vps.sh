@@ -34,6 +34,8 @@ LEGACY_QR_CONTAINER="${LEGACY_QR_CONTAINER:-awg-admin-qr-renderer}"
 BACKUP_DIR="${BACKUP_DIR:-/opt/awg-panel-backups}"
 SKIP_DOCKER_INSTALL="${SKIP_DOCKER_INSTALL:-0}"
 FORCE_PORT="${FORCE_PORT:-0}"
+DOMAIN="${DOMAIN:-}"
+CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
 
 STEP_N=0
 _SPIN_PID=''
@@ -533,7 +535,11 @@ print_summary() {
   awg_container="$(env_value AWG_DOCKER_CONTAINER)"
 
   if frontend_enabled; then
-    panel_url="http://$(detect_public_ip):$PANEL_HTTP_PORT"
+    if [ -n "${DOMAIN:-}" ]; then
+      panel_url="https://$DOMAIN"
+    else
+      panel_url="http://$(detect_public_ip):$PANEL_HTTP_PORT"
+    fi
     mode_label="Full panel"
   else
     panel_url="http://$(detect_public_ip):$BACKEND_PORT"
@@ -565,6 +571,57 @@ print_summary() {
     printf "  ${C_DIM}Webhooks: set WEBHOOK_URL in .env to enable event notifications.${C_RESET}\n"
   fi
   printf "\n"
+}
+
+# ─── Nginx + SSL ──────────────────────────────────────────────────────────────
+setup_nginx_ssl() {
+  local domain="$1"
+  step "Setting up Nginx + SSL for $domain"
+  have_cmd apt-get || { log_warn "apt-get not found — skipping SSL setup. Install nginx + certbot manually."; return 0; }
+
+  spin_start "Installing nginx and certbot…"
+  apt-get install -y -qq nginx certbot python3-certbot-nginx >/dev/null 2>&1
+  spin_stop
+  log_ok "nginx and certbot installed"
+
+  local vhost="/etc/nginx/sites-available/awg-panel"
+  cat > "$vhost" <<NGINX_CONF
+server {
+    listen 80;
+    server_name ${domain};
+    location / {
+        proxy_pass http://127.0.0.1:${PANEL_HTTP_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection keep-alive;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+NGINX_CONF
+  ln -sf "$vhost" /etc/nginx/sites-enabled/awg-panel
+  rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+  nginx -t >/dev/null 2>&1 || fail "Nginx config test failed — check $vhost"
+  systemctl enable nginx >/dev/null 2>&1 || true
+  systemctl reload nginx 2>/dev/null || systemctl start nginx
+  log_ok "Nginx configured for $domain → port $PANEL_HTTP_PORT"
+
+  log "Obtaining Let's Encrypt certificate…"
+  local certbot_args="--nginx -d $domain --non-interactive --agree-tos"
+  if [ -n "$CERTBOT_EMAIL" ]; then
+    certbot_args="$certbot_args --email $CERTBOT_EMAIL"
+  else
+    certbot_args="$certbot_args --register-unsafely-without-email"
+  fi
+  # shellcheck disable=SC2086
+  if certbot $certbot_args >/dev/null 2>&1; then
+    log_ok "SSL certificate obtained — panel available at https://$domain"
+  else
+    log_warn "Certbot failed. Panel still accessible at http://$(detect_public_ip):$PANEL_HTTP_PORT"
+    log_warn "Manual fix: certbot --nginx -d $domain --non-interactive --agree-tos --register-unsafely-without-email"
+  fi
 }
 
 # ─── Interactive wizard ───────────────────────────────────────────────────────
@@ -638,6 +695,21 @@ wizard() {
   read -r _ans
   AWG_PORT="${_ans:-$_default_wgport}"
 
+  # ── SSL domain ───────────────────────────────────────────────────────────────
+  if [ "$INSTALL_MODE" = "panel" ]; then
+    printf "\n"
+    printf "  ${C_DIM}  Nginx + Certbot SSL — leave empty to skip.${C_RESET}\n"
+    printf "  ${C_DIM}  Prerequisite: DNS A record for the domain must point to this IP.${C_RESET}\n"
+    printf "  ${C_BOLD}SSL domain${C_RESET}           [${C_CYAN}${DOMAIN:-none}${C_RESET}]: "
+    read -r _ans
+    DOMAIN="${_ans:-${DOMAIN:-}}"
+    if [ -n "$DOMAIN" ] && [ -z "$CERTBOT_EMAIL" ]; then
+      printf "  ${C_BOLD}Certbot email${C_RESET}        [${C_CYAN}none${C_RESET}]: "
+      read -r _ans
+      CERTBOT_EMAIL="${_ans:-}"
+    fi
+  fi
+
   printf "\n"
 }
 
@@ -661,10 +733,19 @@ main() {
   fi
 
   healthcheck
+
+  if [ -n "$DOMAIN" ] && frontend_enabled; then
+    setup_nginx_ssl "$DOMAIN"
+  fi
+
   print_summary
 
   if frontend_enabled; then
-    log_ok "Open in browser → ${C_BOLD}http://$(detect_public_ip):$PANEL_HTTP_PORT${C_RESET}"
+    if [ -n "$DOMAIN" ]; then
+      log_ok "Open in browser → ${C_BOLD}https://$DOMAIN${C_RESET}"
+    else
+      log_ok "Open in browser → ${C_BOLD}http://$(detect_public_ip):$PANEL_HTTP_PORT${C_RESET}"
+    fi
   else
     log_ok "Done. Add this VPS to the central panel using the URL and Token above."
   fi

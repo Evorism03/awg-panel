@@ -985,6 +985,11 @@ function App(){
   },[isAdminRoute, isLoggedIn, view, servers.length]);
 
   useEffect(()=>{
+    if(!isStatusRoute) return;
+    loadStatus().catch(()=>{});
+  },[isStatusRoute]);
+
+  useEffect(()=>{
     const stopSelectionDrag = () => {
       if (!selectionDragRef.current.active) return;
       selectionDragRef.current.active = false;
@@ -1297,6 +1302,50 @@ function App(){
     </td></tr>;
   };
 
+  if (isStatusRoute) return <main className="public-page">
+    <section className="public-hero">
+      <div className="public-hero-copy">
+        <h1>{t('appName')}</h1>
+        <p>{t('statusPage')}</p>
+      </div>
+      <div className="public-hero-actions">
+        <button className="secondary" onClick={()=>navigate('/')}>{t('home')}</button>
+      </div>
+    </section>
+    <section className="public-layout" style={{maxWidth:'680px'}}>
+      <div className="card" style={{width:'100%'}}>
+        <div className="panel-head">
+          <div>
+            <h2 style={{display:'flex',alignItems:'center',gap:'8px'}}>
+              {statusData
+                ? statusData.overall === 'online'
+                  ? <><span className="badge ok" style={{width:10,height:10,borderRadius:'50%',padding:0,display:'inline-block'}}/> {t('statusOnline')}</>
+                  : statusData.overall === 'degraded'
+                  ? <><span className="badge warn" style={{width:10,height:10,borderRadius:'50%',padding:0,display:'inline-block'}}/> {t('statusDegraded')}</>
+                  : <><span className="badge expired" style={{width:10,height:10,borderRadius:'50%',padding:0,display:'inline-block'}}/> {t('statusOffline')}</>
+                : '…'}
+            </h2>
+            {statusData && <p style={{fontSize:'12px',color:'var(--muted)',margin:'2px 0 0'}}>{t('statusLastCheck')}: {new Date(statusData.checkedAt).toLocaleTimeString()}</p>}
+          </div>
+          <button className="secondary" onClick={()=>loadStatus().catch(()=>{})} disabled={statusLoading}>
+            {statusLoading ? <Loader2 size={16} className="spin-icon"/> : <RefreshCw size={16}/>}{t('refresh')}
+          </button>
+        </div>
+        {statusData && statusData.servers && <table className="server-table" style={{marginTop:'8px'}}>
+          <thead><tr><th>{t('statusServer')}</th><th>{t('status')}</th><th>{t('statusLatency')}</th></tr></thead>
+          <tbody>
+            {statusData.servers.map((s,i)=><tr key={i}>
+              <td><strong>{s.name}</strong><small style={{display:'block',color:'var(--muted)',fontSize:'11px'}}>{s.kind === 'local' ? t('statusKindLocal') : t('statusKindAgent')}</small></td>
+              <td><span className={`badge ${s.status === 'online' ? 'ok' : 'expired'}`}>{s.status === 'online' ? t('online') : t('offline')}</span></td>
+              <td>{s.latencyMs != null ? `${s.latencyMs} ${t('statusLatency')}` : '—'}</td>
+            </tr>)}
+          </tbody>
+        </table>}
+        {!statusData && !statusLoading && <button onClick={()=>loadStatus().catch(()=>{})}><Activity size={16}/>{t('refresh')}</button>}
+      </div>
+    </section>
+  </main>;
+
   if (isPortalRoute) return <main className="public-page">
     <section className="public-hero">
       <div className="public-hero-copy">
@@ -1332,6 +1381,45 @@ function App(){
             {portalIdQr && <div className="portal-qr"><QRCanvas text={portalIdConfig} size={240}/></div>}
           </>}
           {!portalIdClient.hasConfig && <p className="portal-no-config">{t('portalConfigNotAvail')}</p>}
+          <div style={{marginTop:'12px',borderTop:'1px solid var(--border)',paddingTop:'10px'}}>
+            <strong style={{fontSize:'13px'}}>{t('renewInCabinet')}</strong>
+            <div className="client-form-grid" style={{marginTop:'6px'}}>
+              <label>{t('renewTermLabel')}<select value={portalRenewTerm} onChange={e=>setPortalRenewTerm(e.target.value)}>
+                {clientTerms.filter(([v])=>v!=='admin'&&v!=='forever').map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
+              </select></label>
+            </div>
+            {portalIdRenewResult && !portalIdRenewResult.loading && (
+              portalIdRenewResult.success
+                ? <p className="portal-ok"><Check size={13}/> {t('renewByIdSuccess')} {portalIdRenewResult.expiresAt||'∞'}</p>
+                : portalIdRenewResult.pending
+                ? <p className="portal-no-config">{t('renewByIdPending')}</p>
+                : <p className="portal-no-config">{portalIdRenewResult.error||t('renewByIdNotFound')}</p>
+            )}
+            <button className="secondary" onClick={()=>portalCabinetRenewById()} disabled={!!(portalIdRenewResult?.loading)}>
+              {portalIdRenewResult?.loading ? <Loader2 size={16} className="spin-icon"/> : <RotateCcw size={16}/>}{t('renewInCabinet')}
+            </button>
+          </div>
+          <div style={{marginTop:'12px',borderTop:'1px solid var(--border)',paddingTop:'10px'}}>
+            <strong style={{fontSize:'13px'}}>{t('deviceAdd')}</strong>
+            <p style={{fontSize:'12px',color:'var(--muted)',margin:'2px 0 6px'}}>{t('deviceAddDesc')}</p>
+            <div className="client-form-grid">
+              <label>{t('contact')}<input value={portalDeviceEmail} onChange={e=>setPortalDeviceEmail(e.target.value)} placeholder="mail@example.com"/></label>
+              <label>{t('deviceName')}<input value={portalDeviceName} onChange={e=>setPortalDeviceName(e.target.value)} placeholder={t('deviceNamePlaceholder')}/></label>
+            </div>
+            {portalDeviceResult && (
+              portalDeviceResult.success
+                ? <>
+                    <p className="portal-ok"><Check size={13}/> {t('deviceAdded')}</p>
+                    {portalDeviceResult.config && <div className="portal-config-actions">
+                      <button className="secondary" onClick={()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([portalDeviceResult.config],{type:'text/plain'})); a.download=`${portalDeviceName||'device'}.conf`; a.click(); }}><Download size={16}/>{t('download')}</button>
+                    </div>}
+                  </>
+                : <p className="portal-no-config">{portalDeviceResult.error||t('deviceAddError')}</p>
+            )}
+            <button className="secondary" onClick={()=>portalAddDevice().catch(()=>{})} disabled={portalDeviceLoading||!portalDeviceEmail.trim()}>
+              {portalDeviceLoading?<Loader2 size={16} className="spin-icon"/>:<Plus size={16}/>}{t('deviceAdd')}
+            </button>
+          </div>
         </div>}
       </div>
 
@@ -1364,6 +1452,16 @@ function App(){
               {qr && <div className="portal-qr"><QRCanvas text={cfg} size={240}/></div>}
             </>}
             {!c.hasConfig && <p className="portal-no-config">{t('portalConfigNotAvail')}</p>}
+            {(()=>{ const res=portalEmailRenewResults[c.clientId]; return <div style={{marginTop:'8px',borderTop:'1px solid var(--border)',paddingTop:'8px'}}>
+              {res && !res.loading && (
+                res.success ? <p className="portal-ok"><Check size={13}/> {t('renewByIdSuccess')} {res.expiresAt||'∞'}</p>
+                : res.pending ? <p className="portal-no-config">{t('renewByIdPending')}</p>
+                : <p className="portal-no-config">{res.error||t('renewByIdNotFound')}</p>
+              )}
+              <button className="secondary" onClick={()=>portalCabinetRenewByEmail(c.clientId)} disabled={!!res?.loading} style={{marginTop:'4px'}}>
+                {res?.loading?<Loader2 size={16} className="spin-icon"/>:<RotateCcw size={16}/>}{t('renewInCabinet')}
+              </button>
+            </div>; })()}
           </div>;
         })}
       </div>
@@ -1379,6 +1477,7 @@ function App(){
       </div>
       <div className="public-hero-actions">
         <button className="secondary" onClick={()=>navigate('/portal')}>{t('portalCabinet')}</button>
+        <button className="secondary" onClick={()=>navigate('/status')}><Activity size={16}/>{t('statusPage')}</button>
         <button className="secondary public-admin-link" onClick={()=>navigate('/admin')}>{t('adminPanel')}</button>
       </div>
     </section>
