@@ -1706,6 +1706,42 @@ def portal_config_by_id(client_id: str = Query(...)):
     return Response(content=cfg, media_type="text/plain; charset=utf-8")
 
 
+@app.get("/api/portal/verify")
+def portal_verify(client_id: str = Query(...), contact: str = Query(...)):
+    cid = client_id.strip()
+    contact_norm = contact.strip().lower()
+    if not cid or not contact_norm:
+        raise HTTPException(400, "Client ID and contact are required")
+    pk = _find_pk_by_client_id(cid)
+    if not pk:
+        raise HTTPException(401, "Invalid credentials")
+    meta = load_clients_meta()
+    stored = meta.get(pk, {}).get("contact", "").strip().lower()
+    if not stored or stored != contact_norm:
+        raise HTTPException(401, "Invalid credentials")
+    peers_by_key = {p.get("PublicKey", "").strip(): p for p in parse_peers(read_cfg())}
+    expired = load_expired_clients()
+    peer = peers_by_key.get(pk)
+    if peer:
+        return {"client": {
+            "name": peer.get("name", ""),
+            "clientId": cid,
+            "status": "active",
+            "expiresAt": peer.get("expiresAt", ""),
+            "hasConfig": os.path.exists(client_export_path(pk)),
+        }}
+    if pk in expired:
+        exp = expired[pk]
+        return {"client": {
+            "name": exp.get("name", ""),
+            "clientId": cid,
+            "status": "expired",
+            "expiresAt": exp.get("expiresAt", ""),
+            "hasConfig": os.path.exists(client_export_path(pk)),
+        }}
+    raise HTTPException(401, "Invalid credentials")
+
+
 @app.get("/api/portal/lookup")
 def portal_lookup(contact: str = Query(...)):
     contact_norm = contact.strip().lower()

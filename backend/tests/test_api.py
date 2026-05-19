@@ -249,3 +249,35 @@ def test_portal_lookup_by_id_found(client, auth):
     assert data is not None
     assert data["clientId"] == client_id
     assert data["status"] == "active"
+
+
+# ─── Portal verify ────────────────────────────────────────────────────────────
+
+def test_portal_verify_success(client, auth):
+    create = client.post(
+        "/api/clients",
+        json={"name": "VerifyClient", "term": "1m", "contact": "verify@test.com"},
+        headers=auth,
+    )
+    client_id = create.json()["clientId"]
+    r = client.get(f"/api/portal/verify?client_id={client_id}&contact=verify@test.com")
+    assert r.status_code == 200
+    data = r.json()["client"]
+    assert data["clientId"] == client_id
+    assert data["status"] == "active"
+
+
+def test_portal_verify_wrong_email(client, auth):
+    create = client.post(
+        "/api/clients",
+        json={"name": "VerifyBad", "term": "1m", "contact": "real@test.com"},
+        headers=auth,
+    )
+    client_id = create.json()["clientId"]
+    r = client.get(f"/api/portal/verify?client_id={client_id}&contact=wrong@test.com")
+    assert r.status_code == 401
+
+
+def test_portal_verify_unknown_id(client):
+    r = client.get("/api/portal/verify?client_id=nosuchid&contact=any@test.com")
+    assert r.status_code == 401
