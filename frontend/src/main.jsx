@@ -899,6 +899,7 @@ function App(){
     ['clients',t('clients'),Users],
     ['expired',t('expired'),UserX],
     ['orders',t('orders'),ShoppingCart],
+    ['status',t('statusPage'),Activity],
     ['server',t('servers'),Server],
   ];
   const authed = isLoggedIn;
@@ -988,6 +989,11 @@ function App(){
     if(!isStatusRoute) return;
     loadStatus().catch(()=>{});
   },[isStatusRoute]);
+
+  useEffect(()=>{
+    if(!isAdminRoute || !isLoggedIn || view !== 'status') return;
+    loadStatus().catch(()=>{});
+  },[isAdminRoute, isLoggedIn, view]);
 
   useEffect(()=>{
     const stopSelectionDrag = () => {
@@ -1221,6 +1227,7 @@ function App(){
     return <div className="client-actions">
       <button className={`secondary icon-button ${isClientSelected(key) ? 'selected' : ''}`} title={isClientSelected(key) ? t('clearSelection') : t('select')} onMouseDown={event=>event.stopPropagation()} onClick={(event)=>{ event.stopPropagation(); toggleClientSelected(client); }}><CheckCircle2 size={16}/></button>
       <button className="secondary icon-button" title={t('details')} onMouseDown={event=>event.stopPropagation()} onClick={(event)=>{ event.stopPropagation(); setExpandedClientKey(expandedClientKey === key ? '' : key); }}><ChevronDown className={expandedClientKey === key ? 'rotated' : ''} size={16}/></button>
+      <button className="secondary icon-button" title={t('copyConfig')} onMouseDown={event=>event.stopPropagation()} onClick={(event)=>{ event.stopPropagation(); copyClientConfig(client.PublicKey, client.serverId||activeServerId).catch(handleError); }}><Clipboard size={16}/></button>
       <button className="secondary icon-button" title={t('editName')} onMouseDown={event=>event.stopPropagation()} onClick={(event)=>{ event.stopPropagation(); beginEditClient(client); }}><Pencil size={16}/></button>
       <button className="danger icon-button" title={t('deleteClient')} onMouseDown={event=>event.stopPropagation()} onClick={(event)=>{ event.stopPropagation(); remove(client.PublicKey, client.serverId).catch(handleError); }}><Trash2 size={16}/></button>
     </div>;
@@ -1808,6 +1815,31 @@ function App(){
                 })}
               </tbody>
             </table></div>
+        }
+      </section>
+    </>}
+
+    {view==='status' && <>
+      <section className="section-head">
+        <div><h2>{t('statusPage')}</h2><p>{statusData ? (statusData.overall === 'online' ? t('statusOnline') : statusData.overall === 'degraded' ? t('statusDegraded') : t('statusOffline')) : '—'}</p></div>
+        <button className="secondary" onClick={()=>loadStatus().catch(()=>{})} disabled={statusLoading}>
+          {statusLoading ? <Loader2 size={16} className="spin-icon"/> : <RefreshCw size={16}/>}{t('refresh')}
+        </button>
+      </section>
+      <section className="card">
+        {statusData?.servers
+          ? <table className="server-table">
+              <thead><tr><th>{t('statusServer')}</th><th>{t('status')}</th><th>{t('statusLatency')}</th><th>{t('statusLastCheck')}</th></tr></thead>
+              <tbody>
+                {statusData.servers.map((s,i)=><tr key={i}>
+                  <td><strong>{s.name}</strong><small style={{display:'block',color:'var(--muted)',fontSize:'11px'}}>{s.kind === 'local' ? t('statusKindLocal') : t('statusKindAgent')}</small></td>
+                  <td><span className={`badge ${s.status === 'online' ? 'ok' : 'expired'}`}>{s.status === 'online' ? t('online') : t('offline')}</span></td>
+                  <td>{s.latencyMs != null ? `${s.latencyMs} ${t('statusLatency')}` : '—'}</td>
+                  <td className="muted-text">{statusData.checkedAt ? new Date(statusData.checkedAt).toLocaleTimeString() : '—'}</td>
+                </tr>)}
+              </tbody>
+            </table>
+          : <p style={{padding:'12px 0',color:'var(--muted)'}}>{statusLoading ? t('refreshing') : t('refresh')}</p>
         }
       </section>
     </>}
