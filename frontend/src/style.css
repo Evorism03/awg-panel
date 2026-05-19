@@ -451,6 +451,13 @@ main.public-page{max-width:1280px;padding:24px 24px 36px}
 .detail-grid strong{display:block;overflow:hidden;text-overflow:ellipsis;color:var(--text);font-size:14px}
 .contact-display{display:flex;align-items:center;gap:6px}.contact-display strong{flex:1;min-width:0}
 .detail-actions{display:flex;gap:10px;flex-wrap:wrap}
+.client-history{display:flex;flex-direction:column;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line-soft)}
+.client-history-row{display:flex;align-items:center;gap:8px;font-size:12px}
+.client-history-row .muted-text{color:var(--muted);font-size:12px}
+.client-history-row .badge{font-size:11px;padding:2px 7px}
+.pagination{display:flex;align-items:center;gap:10px;padding:10px 12px 4px;font-size:13px;color:var(--muted)}
+.pagination button{min-width:0}
+.pagination span{flex:1;text-align:center}
 .detail-key{
   padding:11px 12px;
   border:1px solid var(--line-soft);

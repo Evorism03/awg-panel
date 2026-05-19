@@ -71,7 +71,8 @@ const dict = {
     renewInCabinet:'Продлить подписку', renewTermLabel:'Срок продления',
     portal:'Личный кабинет', portalCabinet:'Кабинет', portalById:'По Client ID', portalByIdDesc:'Введите ваш Client ID для просмотра подписки', portalByIdNotFound:'Клиент с таким ID не найден', portalByEmail:'По Email', portalByEmailDesc:'Введите email для поиска всех ваших подписок', portalNotFound:'Подписки не найдены', portalSearch:'Найти', portalIdLabel:'Client ID', portalEmailLabel:'Email', portalActive:'Активна', portalExpired:'Истекла', portalExpires:'Действует до', portalGetConfig:'Скачать конфиг', portalShowQr:'Показать QR', portalConfigNotAvail:'Конфиг недоступен — обратитесь к администратору',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Текущая панель', deleteServer:'Удалить сервер?',
-    sortBy:'Сортировка', sortNameAsc:'Имя A-Z', sortNameDesc:'Имя Z-A', sortCreatedDesc:'Дата создания, новые', sortCreatedAsc:'Дата создания, старые', sortLastSeenDesc:'Последнее подключение, новые', sortLastSeenAsc:'Последнее подключение, старые', selectAll:'Выбрать все', clearSelection:'Снять выбор', deleteSelected:'Удалить выбранные', selectedClients:'Выбрано клиентов', createdOnly:'Дата создания', lastConnection:'Последнее подключение', deleting:'Удаление', deleted:'Удалено', bulkActions:'Действия группы', bulkReady:'Можно удалять выбранных', editExpiry:'Изменить дату окончания', clearExpiry:'Без ограничений'
+    sortBy:'Сортировка', sortNameAsc:'Имя A-Z', sortNameDesc:'Имя Z-A', sortCreatedDesc:'Дата создания, новые', sortCreatedAsc:'Дата создания, старые', sortLastSeenDesc:'Последнее подключение, новые', sortLastSeenAsc:'Последнее подключение, старые', selectAll:'Выбрать все', clearSelection:'Снять выбор', deleteSelected:'Удалить выбранные', selectedClients:'Выбрано клиентов', createdOnly:'Дата создания', lastConnection:'Последнее подключение', deleting:'Удаление', deleted:'Удалено', bulkActions:'Действия группы', bulkReady:'Можно удалять выбранных', editExpiry:'Изменить дату окончания', clearExpiry:'Без ограничений',
+    clientHistory:'История', noHistory:'Событий нет', prevPage:'Назад', nextPage:'Вперёд', pageOf:'из'
   },
   us: {
     appName:'AmneziaWG Admin',
@@ -106,7 +107,8 @@ const dict = {
     renewInCabinet:'Renew subscription', renewTermLabel:'Renewal term',
     portal:'My Account', portalCabinet:'Account', portalById:'By Client ID', portalByIdDesc:'Enter your Client ID to view your subscription', portalByIdNotFound:'No client found with this ID', portalByEmail:'By Email', portalByEmailDesc:'Enter your email to find all your subscriptions', portalNotFound:'No subscriptions found', portalSearch:'Find', portalIdLabel:'Client ID', portalEmailLabel:'Email', portalActive:'Active', portalExpired:'Expired', portalExpires:'Valid until', portalGetConfig:'Download config', portalShowQr:'Show QR', portalConfigNotAvail:'Config not available — contact your administrator',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Current panel', deleteServer:'Delete server?',
-    sortBy:'Sort', sortNameAsc:'Name A-Z', sortNameDesc:'Name Z-A', sortCreatedDesc:'Created newest', sortCreatedAsc:'Created oldest', sortLastSeenDesc:'Last connected newest', sortLastSeenAsc:'Last connected oldest', selectAll:'Select all', clearSelection:'Clear selection', deleteSelected:'Delete selected', selectedClients:'Selected clients', createdOnly:'Created date', lastConnection:'Last connected', deleting:'Deleting', deleted:'Deleted', bulkActions:'Group actions', bulkReady:'Ready to delete selected', editExpiry:'Edit expiry date', clearExpiry:'No limit'
+    sortBy:'Sort', sortNameAsc:'Name A-Z', sortNameDesc:'Name Z-A', sortCreatedDesc:'Created newest', sortCreatedAsc:'Created oldest', sortLastSeenDesc:'Last connected newest', sortLastSeenAsc:'Last connected oldest', selectAll:'Select all', clearSelection:'Clear selection', deleteSelected:'Delete selected', selectedClients:'Selected clients', createdOnly:'Created date', lastConnection:'Last connected', deleting:'Deleting', deleted:'Deleted', bulkActions:'Group actions', bulkReady:'Ready to delete selected', editExpiry:'Edit expiry date', clearExpiry:'No limit',
+    clientHistory:'History', noHistory:'No events', prevPage:'Prev', nextPage:'Next', pageOf:'of'
   }
 };
 
@@ -166,6 +168,20 @@ const orderStatusClass = (status) => ({
   closed: 'admin',
   pending: 'warn',
 })[normalizeOrderStatus(status)] || 'muted';
+
+const ACTION_LABELS = {
+  ru: {
+    'client.create':'Создан','client.renew':'Продлён','client.expire':'Заблокирован',
+    'client.delete':'Удалён','client.update_contact':'Контакт','client.rename':'Переименован',
+    'client.import':'Импортирован','client.update_expiry':'Срок изменён','portal.add_device':'Устройство добавлено',
+  },
+  us: {
+    'client.create':'Created','client.renew':'Renewed','client.expire':'Expired',
+    'client.delete':'Deleted','client.update_contact':'Contact','client.rename':'Renamed',
+    'client.import':'Imported','client.update_expiry':'Expiry changed','portal.add_device':'Device added',
+  },
+};
+const CLIENTS_PER_PAGE = 25;
 
 const smoothPath = (coords) => {
   if (coords.length < 2) return coords[0] ? `M ${coords[0].x} ${coords[0].y}` : '';
@@ -297,6 +313,7 @@ function App(){
   const [portalEmailRenewResults,setPortalEmailRenewResults]=useState({});
   const [portalDeviceEmail,setPortalDeviceEmail]=useState('');
   const [portalDeviceName,setPortalDeviceName]=useState('');
+  const [portalDeviceQr,setPortalDeviceQr]=useState(false);
   const [portalDeviceResult,setPortalDeviceResult]=useState(null);
   const [portalDeviceLoading,setPortalDeviceLoading]=useState(false);
   const [statusData,setStatusData]=useState(null);
@@ -310,6 +327,10 @@ function App(){
   const [pendingClientKeys,setPendingClientKeys]=useState(()=>new Set());
   const [clientSortField,setClientSortField]=useState('name');
   const [clientSortDir,setClientSortDir]=useState('asc');
+  const [activePage,setActivePage]=useState(0);
+  const [expiredPage,setExpiredPage]=useState(0);
+  const [clientHistoryData,setClientHistoryData]=useState({});
+  const [clientHistoryLoading,setClientHistoryLoading]=useState({});
   const selectionDragRef = useRef({active:false, desired:false, suppressClick:false, lastKey:''});
   const isAggregateServer = activeServerId === 'all';
 
@@ -633,6 +654,7 @@ function App(){
     if(!cid||!contact) return;
     setPortalDeviceLoading(true);
     setPortalDeviceResult(null);
+    setPortalDeviceQr(false);
     try{
       const r=await fetch('/api/portal/add-device',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:cid,contact,device_name:portalDeviceName.trim()})});
       const j=await r.json();
@@ -726,7 +748,7 @@ function App(){
     setServerName(''); setServerBaseUrl(''); setServerToken(''); setServerMaxUsers(''); setShowServerForm(false);
     setEditingServerId(null);
   };
-  const selectServer=(id)=>{ setActiveServerId(id); if (id !== 'all') setClientServerId(id); localStorage.setItem('activeServerId',id); if(id) loadClients(id).catch(handleError); };
+  const selectServer=(id)=>{ setActiveServerId(id); if (id !== 'all') setClientServerId(id); localStorage.setItem('activeServerId',id); setActivePage(0); setExpiredPage(0); if(id) loadClients(id).catch(handleError); };
   const editServer=(server)=>{
     setEditingServerId(server.id);
     setServerName(server.name);
@@ -1165,10 +1187,12 @@ function App(){
   const setClientSort = (field) => {
     if (clientSortField === field) {
       setClientSortDir(current => current === 'asc' ? 'desc' : 'asc');
+      setActivePage(0); setExpiredPage(0);
       return;
     }
     setClientSortField(field);
     setClientSortDir(field === 'status' || field === 'expires' || field === 'lastConnection' || field === 'blockedAt' ? 'desc' : 'asc');
+    setActivePage(0); setExpiredPage(0);
   };
   const sortIcon = (field) => {
     if (clientSortField !== field) return <ArrowUpDown size={14} />;
@@ -1178,6 +1202,37 @@ function App(){
   const sortedActiveClients = useMemo(() => sortClients(activeClientsList), [activeClientsList, clientSortField, clientSortDir, peerStatsByKey]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const sortedPendingRenewalClients = useMemo(() => sortClients(pendingRenewalClients), [pendingRenewalClients, clientSortField, clientSortDir, peerStatsByKey]);
+
+  const pagedActiveClients = useMemo(() => sortedActiveClients.slice(activePage * CLIENTS_PER_PAGE, (activePage + 1) * CLIENTS_PER_PAGE), [sortedActiveClients, activePage]);
+  const pagedExpiredClients = useMemo(() => sortedPendingRenewalClients.slice(expiredPage * CLIENTS_PER_PAGE, (expiredPage + 1) * CLIENTS_PER_PAGE), [sortedPendingRenewalClients, expiredPage]);
+
+  const loadClientHistory = async (client) => {
+    const key = clientRowKey(client);
+    if (clientHistoryData[key] !== undefined) return;
+    setClientHistoryLoading(p=>({...p,[key]:true}));
+    try {
+      const r = await api(`/api/audit-log?entity_id=${encodeURIComponent(client.PublicKey)}&limit=20`);
+      const j = await r.json();
+      setClientHistoryData(p=>({...p,[key]:j.entries}));
+    } catch {
+      setClientHistoryData(p=>({...p,[key]:[]}));
+    } finally {
+      setClientHistoryLoading(p=>({...p,[key]:false}));
+    }
+  };
+
+  const renderPagination = (page, total, onPage) => {
+    const pages = Math.ceil(total / CLIENTS_PER_PAGE);
+    if (pages <= 1) return null;
+    const from = page * CLIENTS_PER_PAGE + 1;
+    const to = Math.min((page + 1) * CLIENTS_PER_PAGE, total);
+    return <div className="pagination">
+      <button className="secondary" disabled={page === 0} onClick={()=>onPage(page-1)}><ArrowUp size={14}/>{t('prevPage')}</button>
+      <span>{from}–{to} {t('pageOf')} {total}</span>
+      <button className="secondary" disabled={page >= pages-1} onClick={()=>onPage(page+1)}>{t('nextPage')}<ArrowDown size={14}/></button>
+    </div>;
+  };
+
   const serverStats = (server)=>{
     const serverClients = server.id === 'all' ? allServerStatsClients : allServerStatsClients.filter(client=>(client.serverId || 'local') === server.id);
     const active = serverClients.filter(client=>!client.blocked).length;
@@ -1288,7 +1343,27 @@ function App(){
             <button className="secondary icon-button" title={t('renew')} onClick={()=>renewClient(client).catch(handleError)}><Check size={16}/></button>
             <button className="secondary icon-button" title={t('cancel')} onClick={()=>setRenewingClientKey('')}><X size={16}/></button>
           </span>}
+          <button className="secondary" onClick={()=>loadClientHistory(client).catch(()=>{})}><Activity size={16}/>{t('clientHistory')}</button>
         </div>
+        {(()=>{
+          const key = clientRowKey(client);
+          const entries = clientHistoryData[key];
+          const loading = clientHistoryLoading[key];
+          if (!entries && !loading) return null;
+          return <div className="client-history">
+            {loading && <span className="muted-text"><Loader2 size={14} className="spin-icon"/> …</span>}
+            {entries && entries.length === 0 && <span className="muted-text">{t('noHistory')}</span>}
+            {entries && entries.map(e=>{
+              const label = ACTION_LABELS[uiLang]?.[e.action] || ACTION_LABELS.us[e.action] || e.action;
+              const detail = e.details?.term || e.details?.newName || e.details?.contact || e.details?.expiresAt || '';
+              return <div key={e.id} className="client-history-row">
+                <span className="badge muted">{label}</span>
+                {detail && <span className="muted-text">{detail}</span>}
+                <span className="muted-text">{e.timestamp?.slice(0,16).replace('T',' ')}</span>
+              </div>;
+            })}
+          </div>;
+        })()}
       </div>
     </td></tr>;
   };
@@ -1417,9 +1492,13 @@ function App(){
               portalDeviceResult.success
                 ? <>
                     <p className="portal-ok"><Check size={13}/> {t('deviceAdded')}</p>
-                    {portalDeviceResult.config && <div className="portal-config-actions">
-                      <button className="secondary" onClick={()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([portalDeviceResult.config],{type:'text/plain'})); a.download=`${portalDeviceName||'device'}.conf`; a.click(); }}><Download size={16}/>{t('download')}</button>
-                    </div>}
+                    {portalDeviceResult.config && <>
+                      <div className="portal-config-actions">
+                        <button className="secondary" onClick={()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([portalDeviceResult.config],{type:'text/plain'})); a.download=`${portalDeviceName||'device'}.conf`; a.click(); }}><Download size={16}/>{t('download')}</button>
+                        <button className="secondary" onClick={()=>setPortalDeviceQr(v=>!v)}><QrCode size={16}/>{t('portalShowQr')}</button>
+                      </div>
+                      {portalDeviceQr && <div className="portal-qr"><QRCanvas text={portalDeviceResult.config} size={240}/></div>}
+                    </>}
                   </>
                 : <p className="portal-no-config">{portalDeviceResult.error||t('deviceAddError')}</p>
             )}
@@ -1484,7 +1563,6 @@ function App(){
       </div>
       <div className="public-hero-actions">
         <button className="secondary" onClick={()=>navigate('/portal')}>{t('portalCabinet')}</button>
-        <button className="secondary" onClick={()=>navigate('/status')}><Activity size={16}/>{t('statusPage')}</button>
         <button className="secondary public-admin-link" onClick={()=>navigate('/admin')}>{t('adminPanel')}</button>
       </div>
     </section>
@@ -1677,7 +1755,7 @@ function App(){
       <section className="card">
         <div className="panel-head"><div><h2>{t('activeClients')}</h2><p>{t('activeClientsSub')}</p></div><span className="badge ok">{activeClientsList.length}</span></div>
         <table className="client-table active-client-table"><thead><tr><th><button type="button" className={`table-sort ${clientSortField==='name' ? 'active' : ''}`} onClick={()=>setClientSort('name')}>{t('name')}{sortIcon('name')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='server' ? 'active' : ''}`} onClick={()=>setClientSort('server')}>{t('server')}{sortIcon('server')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='status' ? 'active' : ''}`} onClick={()=>setClientSort('status')}>{t('status')}{sortIcon('status')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='expires' ? 'active' : ''}`} onClick={()=>setClientSort('expires')}>{t('expires')}{sortIcon('expires')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='lastConnection' ? 'active' : ''}`} onClick={()=>setClientSort('lastConnection')}>{t('lastConnection')}{sortIcon('lastConnection')}</button></th><th></th></tr></thead><tbody>
-          {sortedActiveClients.map(c=>{ const key = clientRowKey(c); const status = clientStatus(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''} ${pendingClientKeys.has(key) ? 'client-row-pending' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
+          {pagedActiveClients.map(c=>{ const key = clientRowKey(c); const status = clientStatus(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''} ${pendingClientKeys.has(key) ? 'client-row-pending' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
             <td data-label={t('name')} onClick={event=>{ event.stopPropagation(); if(editingClientKey!==key){ setExpandedClientKey(expandedClientKey===key?'':key); } }}>{renderClientName(c)}</td>
             <td data-label={t('server')}>{clientServerName(c)}</td>
             <td data-label={t('status')}><span className={`badge ${status.className}`}>{status.label}</span></td>
@@ -1686,12 +1764,13 @@ function App(){
             <td className="table-actions">{renderClientActions(c)}</td>
           </tr>{expandedClientKey === key && renderClientDetails(c, 6)}</React.Fragment> })}
         </tbody></table>
+        {renderPagination(activePage, sortedActiveClients.length, setActivePage)}
       </section>
 
       {pendingRenewalClients.length > 0 && <section className="card">
         <div className="panel-head"><div><h2>{t('expiredClients')}</h2><p>{t('expiredClientsSub')}</p></div><span className="badge expired">{pendingRenewalClients.length}</span></div>
         <table className="client-table expired-client-table"><thead><tr><th><button type="button" className={`table-sort ${clientSortField==='name' ? 'active' : ''}`} onClick={()=>setClientSort('name')}>{t('name')}{sortIcon('name')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='server' ? 'active' : ''}`} onClick={()=>setClientSort('server')}>{t('server')}{sortIcon('server')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='status' ? 'active' : ''}`} onClick={()=>setClientSort('status')}>{t('status')}{sortIcon('status')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='expires' ? 'active' : ''}`} onClick={()=>setClientSort('expires')}>{t('expires')}{sortIcon('expires')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='lastConnection' ? 'active' : ''}`} onClick={()=>setClientSort('lastConnection')}>{t('lastConnection')}{sortIcon('lastConnection')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='blockedAt' ? 'active' : ''}`} onClick={()=>setClientSort('blockedAt')}>{t('blockedAt')}{sortIcon('blockedAt')}</button></th><th></th></tr></thead><tbody>
-          {sortedPendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''} ${pendingClientKeys.has(key) ? 'client-row-pending' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
+          {pagedExpiredClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''} ${pendingClientKeys.has(key) ? 'client-row-pending' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
             <td data-label={t('name')} onClick={event=>{ event.stopPropagation(); if(editingClientKey!==key){ setExpandedClientKey(expandedClientKey===key?'':key); } }}>{renderClientName(c)}</td>
             <td data-label={t('server')}>{clientServerName(c)}</td>
             <td data-label={t('status')}><span className="badge expired">{t('renewalPending')}</span></td>
@@ -1701,6 +1780,7 @@ function App(){
             <td className="table-actions">{renderClientActions(c)}</td>
           </tr>{expandedClientKey === key && renderClientDetails(c, 7)}</React.Fragment>})}
         </tbody></table>
+        {renderPagination(expiredPage, sortedPendingRenewalClients.length, setExpiredPage)}
       </section>}
     </>}
 
@@ -1711,7 +1791,7 @@ function App(){
       </section>
       <section className="card">
         <table className="client-table expired-client-table"><thead><tr><th><button type="button" className={`table-sort ${clientSortField==='name' ? 'active' : ''}`} onClick={()=>setClientSort('name')}>{t('name')}{sortIcon('name')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='server' ? 'active' : ''}`} onClick={()=>setClientSort('server')}>{t('server')}{sortIcon('server')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='status' ? 'active' : ''}`} onClick={()=>setClientSort('status')}>{t('status')}{sortIcon('status')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='expires' ? 'active' : ''}`} onClick={()=>setClientSort('expires')}>{t('expires')}{sortIcon('expires')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='lastConnection' ? 'active' : ''}`} onClick={()=>setClientSort('lastConnection')}>{t('lastConnection')}{sortIcon('lastConnection')}</button></th><th><button type="button" className={`table-sort ${clientSortField==='blockedAt' ? 'active' : ''}`} onClick={()=>setClientSort('blockedAt')}>{t('blockedAt')}{sortIcon('blockedAt')}</button></th><th></th></tr></thead><tbody>
-          {sortedPendingRenewalClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''} ${pendingClientKeys.has(key) ? 'client-row-pending' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
+          {pagedExpiredClients.map(c=>{ const key = clientRowKey(c); return <React.Fragment key={key}><tr className={`clickable-row ${expandedClientKey === key ? 'expanded' : ''} ${isClientSelected(key) ? 'selected-row' : ''} ${pendingClientKeys.has(key) ? 'client-row-pending' : ''}`} onMouseDown={event=>beginClientSelectionDrag(c, event)} onMouseEnter={()=>continueClientSelectionDrag(c)} onClick={()=>{ if (selectionDragRef.current.suppressClick) return; setExpandedClientKey(expandedClientKey === key ? '' : key); }}>
             <td data-label={t('name')} onClick={event=>{ event.stopPropagation(); if(editingClientKey!==key){ setExpandedClientKey(expandedClientKey===key?'':key); } }}>{renderClientName(c)}</td>
             <td data-label={t('server')}>{clientServerName(c)}</td>
             <td data-label={t('status')}><span className="badge expired">{t('renewalPending')}</span></td>
@@ -1721,6 +1801,7 @@ function App(){
             <td className="table-actions">{renderClientActions(c)}</td>
           </tr>{expandedClientKey === key && renderClientDetails(c, 7)}</React.Fragment>})}
         </tbody></table>
+        {renderPagination(expiredPage, sortedPendingRenewalClients.length, setExpiredPage)}
       </section>
     </>}
 
@@ -1819,30 +1900,53 @@ function App(){
       </section>
     </>}
 
-    {view==='status' && <>
-      <section className="section-head">
-        <div><h2>{t('statusPage')}</h2><p>{statusData ? (statusData.overall === 'online' ? t('statusOnline') : statusData.overall === 'degraded' ? t('statusDegraded') : t('statusOffline')) : '—'}</p></div>
-        <button className="secondary" onClick={()=>loadStatus().catch(()=>{})} disabled={statusLoading}>
-          {statusLoading ? <Loader2 size={16} className="spin-icon"/> : <RefreshCw size={16}/>}{t('refresh')}
-        </button>
-      </section>
-      <section className="card">
-        {statusData?.servers
-          ? <table className="server-table">
-              <thead><tr><th>{t('statusServer')}</th><th>{t('status')}</th><th>{t('statusLatency')}</th><th>{t('statusLastCheck')}</th></tr></thead>
-              <tbody>
+    {view==='status' && (()=>{
+      const onlineCount  = statusData?.servers?.filter(s=>s.status==='online').length ?? 0;
+      const offlineCount = statusData?.servers?.filter(s=>s.status!=='online').length ?? 0;
+      const overallBadge = !statusData ? 'muted'
+        : statusData.overall === 'online'   ? 'ok'
+        : statusData.overall === 'degraded' ? 'warn'
+        : 'expired';
+      const overallLabel = !statusData ? '—'
+        : statusData.overall === 'online'   ? t('statusOnline')
+        : statusData.overall === 'degraded' ? t('statusDegraded')
+        : t('statusOffline');
+      return <>
+        <section className="section-head">
+          <div><h2>{t('statusPage')}</h2><p><span className={`badge ${overallBadge}`}>{overallLabel}</span></p></div>
+          <div className="actions">
+            <button className="secondary" disabled={statusLoading} onClick={()=>loadStatus().catch(()=>{})}>
+              <RefreshCw size={16}/>{statusLoading ? t('refreshing') : t('refresh')}
+            </button>
+          </div>
+        </section>
+        <section className="server-summary">
+          <div className="card metric server-metric"><Server size={22}/><span>{t('servers')}</span><strong>{statusData?.servers?.length ?? '—'}</strong></div>
+          <div className="card metric server-metric"><Activity size={22}/><span>{t('online')}</span><strong>{statusData ? onlineCount : '—'}</strong></div>
+          <div className="card metric server-metric"><UserX size={22}/><span>{t('offline')}</span><strong>{statusData ? offlineCount : '—'}</strong></div>
+          <div className="card metric server-metric"><Clock3 size={22}/><span>{t('statusLastCheck')}</span><strong>{statusData?.checkedAt ? new Date(statusData.checkedAt).toLocaleTimeString() : '—'}</strong></div>
+        </section>
+        <section className="card">
+          <div className="panel-head"><div><h2>{t('servers')}</h2></div><span className={`badge ${overallBadge}`}>{overallLabel}</span></div>
+          {statusData?.servers
+            ? <table className="server-table"><thead><tr>
+                <th>{t('title')}</th>
+                <th>{t('status')}</th>
+                <th>{t('statusLatency')}</th>
+                <th>{t('statusLastCheck')}</th>
+              </tr></thead><tbody>
                 {statusData.servers.map((s,i)=><tr key={i}>
-                  <td><strong>{s.name}</strong><small style={{display:'block',color:'var(--muted)',fontSize:'11px'}}>{s.kind === 'local' ? t('statusKindLocal') : t('statusKindAgent')}</small></td>
-                  <td><span className={`badge ${s.status === 'online' ? 'ok' : 'expired'}`}>{s.status === 'online' ? t('online') : t('offline')}</span></td>
-                  <td>{s.latencyMs != null ? `${s.latencyMs} ${t('statusLatency')}` : '—'}</td>
-                  <td className="muted-text">{statusData.checkedAt ? new Date(statusData.checkedAt).toLocaleTimeString() : '—'}</td>
+                  <td data-label={t('title')}><strong>{s.name}</strong><small style={{display:'block',color:'var(--muted)',fontSize:'11px'}}>{s.kind==='local' ? t('statusKindLocal') : t('statusKindAgent')}</small></td>
+                  <td data-label={t('status')}><span className={`badge ${s.status==='online' ? 'ok' : 'expired'}`}>{s.status==='online' ? t('online') : t('offline')}</span></td>
+                  <td data-label={t('statusLatency')}>{s.latencyMs != null ? `${s.latencyMs} ${t('statusLatency')}` : '—'}</td>
+                  <td data-label={t('statusLastCheck')} className="muted-text">{statusData.checkedAt ? new Date(statusData.checkedAt).toLocaleTimeString() : '—'}</td>
                 </tr>)}
-              </tbody>
-            </table>
-          : <p style={{padding:'12px 0',color:'var(--muted)'}}>{statusLoading ? t('refreshing') : t('refresh')}</p>
-        }
-      </section>
-    </>}
+              </tbody></table>
+            : <p style={{padding:'12px 0',color:'var(--muted)'}}>{statusLoading ? t('refreshing') : '—'}</p>
+          }
+        </section>
+      </>;
+    })()}
 
     {view==='server' && <>
       <section className="section-head">

@@ -2128,11 +2128,12 @@ def get_audit_log(
     awg_panel_session: str | None = Cookie(None),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    entity_id: str = Query(""),
 ):
     auth(authorization, awg_panel_session)
     return {
-        "entries": _db.load_audit_log(limit, offset),
-        "total": _db.count_audit_log(),
+        "entries": _db.load_audit_log(limit, offset, entity_id),
+        "total": _db.count_audit_log(entity_id),
         "limit": limit,
         "offset": offset,
     }

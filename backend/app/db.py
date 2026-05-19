@@ -357,14 +357,21 @@ def write_audit_log(action: str, entity_type: str = "", entity_id: str = "", det
         pass
 
 
-def load_audit_log(limit: int = 100, offset: int = 0) -> list[dict]:
+def load_audit_log(limit: int = 100, offset: int = 0, entity_id: str = "") -> list[dict]:
     conn = _connect()
     try:
-        rows = conn.execute(
-            "SELECT id, timestamp, action, entity_type, entity_id, details "
-            "FROM audit_log ORDER BY id DESC LIMIT ? OFFSET ?",
-            (limit, offset),
-        ).fetchall()
+        if entity_id:
+            rows = conn.execute(
+                "SELECT id, timestamp, action, entity_type, entity_id, details "
+                "FROM audit_log WHERE entity_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                (entity_id, limit, offset),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, timestamp, action, entity_type, entity_id, details "
+                "FROM audit_log ORDER BY id DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
         return [
             {
                 "id": r["id"],
@@ -389,9 +396,11 @@ def clear_audit_log():
         conn.close()
 
 
-def count_audit_log() -> int:
+def count_audit_log(entity_id: str = "") -> int:
     conn = _connect()
     try:
+        if entity_id:
+            return conn.execute("SELECT COUNT(*) FROM audit_log WHERE entity_id = ?", (entity_id,)).fetchone()[0]
         return conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
     finally:
         conn.close()
