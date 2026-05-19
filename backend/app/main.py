@@ -136,9 +136,10 @@ class ServerUpdate(BaseModel):
     maxUsers: int | None = None
 
 class OrderCreate(BaseModel):
-    login: str
-    email: str
+    login: str = ""
+    email: str = ""
     term: str = "1 месяц"
+    client_id: str = ""
 
 class OrderUpdate(BaseModel):
     status: str | None = None
@@ -515,7 +516,103 @@ def find_available_server() -> dict | None:
     return candidates[0][1]
 
 
+def _renew_by_client_id_local(cid: str, term_code: str) -> dict:
+    """Renew a local client by client_id — handles both expired and active clients."""
+    pk = _find_pk_by_client_id(cid)
+    if pk is None:
+        raise HTTPException(404, "Client not found")
+    if pk in load_expired_clients():
+        return _renew_client_logic(pk, ClientRenew(term=term_code), None)
+    # Active client — update Expires in the AWG config
+    new_expiry = expiration_date(term_code)
+    with data_lock:
+        text = read_cfg()
+        chunks = re.split(r"\n(?=\[Peer\])", text)
+        next_chunks = []
+        found = False
+        name = ""
+        for chunk in chunks:
+            if not chunk.strip().startswith("[Peer]"):
+                next_chunks.append(chunk)
+                continue
+            peer = peer_from_block(chunk)
+            if peer.get("PublicKey", "").strip() != pk:
+                next_chunks.append(chunk)
+                continue
+            name = peer.get("name", "")
+            if re.search(r"(?m)^#\s*Expires:.*$", chunk):
+                if new_expiry:
+                    chunk = re.sub(r"(?m)^#\s*Expires:.*$", f"# Expires: {new_expiry}", chunk, count=1)
+                else:
+                    chunk = re.sub(r"(?m)^#\s*Expires:.*\n?", "", chunk)
+            elif new_expiry:
+                chunk = re.sub(r"(?m)^(PublicKey\s*=)", f"# Expires: {new_expiry}\n\\1", chunk, count=1)
+            next_chunks.append(chunk)
+            found = True
+        if not found:
+            raise HTTPException(404, "Client not found in active config")
+        write_cfg("\n".join(next_chunks))
+        reload_async()
+    _db.write_audit_log("client.renew", "client", pk, {"name": name, "clientId": cid, "term": term_code, "expiresAt": new_expiry})
+    _wh.send("client.renewed", {"publicKey": pk, "name": name, "clientId": cid, "term": term_code, "expiresAt": new_expiry})
+    return {"ok": True, "publicKey": pk, "expiresAt": new_expiry, "name": name}
+
+
+def _process_renewal_order(order: dict, cid: str) -> dict:
+    """Process a renewal order: find client by ID on local server or agents and extend their subscription."""
+    term_code = normalize_term(order.get("term", ""))
+    processed_at = datetime.now().isoformat(timespec="seconds")
+    try:
+        result = _renew_by_client_id_local(cid, term_code)
+        return {
+            **order,
+            "status": "issued",
+            "serverId": LOCAL_SERVER_ID,
+            "serverName": LOCAL_SERVER_NAME,
+            "processedAt": processed_at,
+            "expiresAt": result.get("expiresAt", ""),
+        }
+    except HTTPException as e:
+        if e.status_code != 404:
+            return {**order, "status": "pending", "processingError": str(e.detail)}
+    for s in _db.load_servers():
+        status_code, raw = _portal_proxy_get(s["baseUrl"], f"/api/portal/lookup-by-id?client_id={quote(cid)}")
+        if status_code != 200 or not raw:
+            continue
+        try:
+            client_data = json.loads(raw).get("client")
+        except Exception:
+            continue
+        if not client_data:
+            continue
+        pk_remote = (client_data.get("publicKey") or client_data.get("PublicKey", "")).strip()
+        if not pk_remote:
+            continue
+        try:
+            client_status = client_data.get("status", "")
+            if client_status in ("not_renewed", "renewal_pending"):
+                res = panel_json(s, "POST", f"/clients/renew?public_key={quote(pk_remote, safe='')}", payload={"term": term_code})
+            else:
+                new_expiry = expiration_date(term_code)
+                res = panel_json(s, "POST", f"/clients/{quote(pk_remote, safe='')}/expiry", payload={"expiresAt": new_expiry})
+            expires = res.get("expiresAt", "") if isinstance(res, dict) else ""
+            return {
+                **order,
+                "status": "issued",
+                "serverId": s.get("id", ""),
+                "serverName": s.get("name", ""),
+                "processedAt": processed_at,
+                "expiresAt": expires,
+            }
+        except Exception as e:
+            return {**order, "status": "pending", "processingError": str(e)}
+    return {**order, "status": "pending", "processingError": "Client not found on any server"}
+
+
 def process_order_internal(order: dict) -> dict:
+    cid = (order.get("clientId") or "").strip()
+    if cid:
+        return _process_renewal_order(order, cid)
     term_code = normalize_term(order.get("term", ""))
     name = (order.get("login") or f"order-{order['id'][:8]}").strip()
     contact = (order.get("email") or "").strip()
@@ -1170,31 +1267,49 @@ def orders(authorization: str | None = Header(None), awg_panel_session: str | No
 @app.post("/api/orders")
 def create_order(body: OrderCreate):
     with data_lock:
+        client_id = body.client_id.strip()
         login = body.login.strip()
         email = body.email.strip()
         term = body.term.strip() or "1m"
-        if not login:
-            raise HTTPException(400, "Login is required")
-        if not email:
-            raise HTTPException(400, "Email is required")
-        order: dict = {
-            "id": secrets.token_hex(8),
-            "login": login,
-            "email": email,
-            "term": term,
-            "status": "pending",
-            "created": datetime.now().isoformat(timespec="seconds"),
-            "createdAt": datetime.now().isoformat(timespec="seconds"),
-        }
+        if client_id:
+            order: dict = {
+                "id": secrets.token_hex(8),
+                "login": login or client_id,
+                "email": email,
+                "term": term,
+                "clientId": client_id,
+                "type": "renewal",
+                "status": "pending",
+                "created": datetime.now().isoformat(timespec="seconds"),
+                "createdAt": datetime.now().isoformat(timespec="seconds"),
+            }
+        else:
+            if not login:
+                raise HTTPException(400, "Login is required")
+            if not email:
+                raise HTTPException(400, "Email is required")
+            order = {
+                "id": secrets.token_hex(8),
+                "login": login,
+                "email": email,
+                "term": term,
+                "status": "pending",
+                "created": datetime.now().isoformat(timespec="seconds"),
+                "createdAt": datetime.now().isoformat(timespec="seconds"),
+            }
         order = process_order_internal(order)
         orders = load_orders()
         orders.insert(0, order)
         save_orders(orders)
-        _db.write_audit_log("order.create", "order", order["id"], {"login": login, "email": email, "status": order.get("status", "")})
+        _db.write_audit_log("order.create", "order", order["id"], {
+            "login": login or client_id, "email": email,
+            "clientId": client_id, "status": order.get("status", ""),
+        })
+        eff_login = login or client_id
         if order.get("status") == "issued":
-            _wh.send("order.issued", {"orderId": order["id"], "login": login, "email": email, "clientId": order.get("clientId", ""), "serverId": order.get("serverId", "")})
+            _wh.send("order.issued", {"orderId": order["id"], "login": eff_login, "email": email, "clientId": order.get("clientId", ""), "serverId": order.get("serverId", "")})
         else:
-            _wh.send("order.created", {"orderId": order["id"], "login": login, "email": email, "status": order.get("status", "")})
+            _wh.send("order.created", {"orderId": order["id"], "login": eff_login, "email": email, "status": order.get("status", "")})
         return {"order": order}
 
 
@@ -1657,15 +1772,42 @@ def _find_pk_by_client_id(cid: str) -> str | None:
     pk = next((key for key, m in meta.items() if m.get("id", "") == cid), None)
     if pk:
         return pk
-    # Fallback: search active peers in WG config (old clients may not be in meta)
     for peer in parse_peers(read_cfg()):
         if peer.get("clientId", "") == cid:
             return peer.get("PublicKey", "").strip() or None
-    # Fallback: search expired clients
     for epk, exp in load_expired_clients().items():
         if exp.get("clientId", "") == cid:
             return epk
     return None
+
+
+def _portal_proxy_get(base_url: str, path: str) -> tuple[int, bytes]:
+    """GET a portal path on a remote agent. Returns (http_status, body)."""
+    try:
+        req = urllib.request.Request(f"{base_url.rstrip('/')}{path}")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return r.status, r.read()
+    except HTTPError as e:
+        return e.code, b""
+    except Exception:
+        return 0, b""
+
+
+def _remote_client_contact(server: dict, cid: str) -> str | None:
+    """Get contact field for a client from a remote server via its admin API."""
+    try:
+        req = urllib.request.Request(
+            f"{server['baseUrl'].rstrip('/')}/api/clients",
+            headers={"Authorization": f"Bearer {server['token']}"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as r:
+            data = json.loads(r.read())
+        for c in data.get("clients", []):
+            if c.get("clientId") == cid:
+                return c.get("contact", "")
+        return None
+    except Exception:
+        return None
 
 
 @app.get("/api/portal/lookup-by-id")
@@ -1673,29 +1815,28 @@ def portal_lookup_by_id(client_id: str = Query(...)):
     cid = client_id.strip()
     if not cid:
         raise HTTPException(400, "Client ID is required")
+    # Local
     pk = _find_pk_by_client_id(cid)
-    if not pk:
-        return {"client": None}
-    peers_by_key = {p.get("PublicKey", "").strip(): p for p in parse_peers(read_cfg())}
-    expired = load_expired_clients()
-    peer = peers_by_key.get(pk)
-    if peer:
-        return {"client": {
-            "name": peer.get("name", ""),
-            "clientId": cid,
-            "status": "active",
-            "expiresAt": peer.get("expiresAt", ""),
-            "hasConfig": os.path.exists(client_export_path(pk)),
-        }}
-    if pk in expired:
-        exp = expired[pk]
-        return {"client": {
-            "name": exp.get("name", ""),
-            "clientId": cid,
-            "status": "expired",
-            "expiresAt": exp.get("expiresAt", ""),
-            "hasConfig": os.path.exists(client_export_path(pk)),
-        }}
+    if pk:
+        peers_by_key = {p.get("PublicKey", "").strip(): p for p in parse_peers(read_cfg())}
+        expired = load_expired_clients()
+        peer = peers_by_key.get(pk)
+        if peer:
+            return {"client": {"name": peer.get("name", ""), "clientId": cid, "status": "active", "expiresAt": peer.get("expiresAt", ""), "hasConfig": os.path.exists(client_export_path(pk))}}
+        if pk in expired:
+            exp = expired[pk]
+            return {"client": {"name": exp.get("name", ""), "clientId": cid, "status": "expired", "expiresAt": exp.get("expiresAt", ""), "hasConfig": os.path.exists(client_export_path(pk))}}
+    # Remote: query every registered server
+    for s in load_servers():
+        status, raw = _portal_proxy_get(s["baseUrl"], f"/api/portal/lookup-by-id?client_id={quote(cid)}")
+        if status != 200 or not raw:
+            continue
+        try:
+            data = json.loads(raw)
+            if data.get("client"):
+                return {"client": data["client"]}
+        except Exception:
+            pass
     return {"client": None}
 
 
@@ -1704,13 +1845,19 @@ def portal_config_by_id(client_id: str = Query(...)):
     cid = client_id.strip()
     if not cid:
         raise HTTPException(400, "Client ID is required")
+    # Local
     pk = _find_pk_by_client_id(cid)
-    if not pk:
-        raise HTTPException(404, "Client not found")
-    cfg = load_client_export(pk)
-    if not cfg:
-        raise HTTPException(404, "Config not available. Contact your administrator.")
-    return Response(content=cfg, media_type="text/plain; charset=utf-8")
+    if pk:
+        cfg = load_client_export(pk)
+        if not cfg:
+            raise HTTPException(404, "Config not available. Contact your administrator.")
+        return Response(content=cfg, media_type="text/plain; charset=utf-8")
+    # Remote
+    for s in load_servers():
+        status, raw = _portal_proxy_get(s["baseUrl"], f"/api/portal/config-by-id?client_id={quote(cid)}")
+        if status == 200 and raw:
+            return Response(content=raw, media_type="text/plain; charset=utf-8")
+    raise HTTPException(404, "Client not found")
 
 
 @app.get("/api/portal/verify")
@@ -1719,33 +1866,49 @@ def portal_verify(client_id: str = Query(...), contact: str = Query(...)):
     contact_norm = contact.strip().lower()
     if not cid or not contact_norm:
         raise HTTPException(400, "Client ID and contact are required")
+    # Local
     pk = _find_pk_by_client_id(cid)
-    if not pk:
-        raise HTTPException(401, "Invalid credentials")
-    meta = load_clients_meta()
-    stored = meta.get(pk, {}).get("contact", "").strip().lower()
-    if not stored or stored != contact_norm:
-        raise HTTPException(401, "Invalid credentials")
-    peers_by_key = {p.get("PublicKey", "").strip(): p for p in parse_peers(read_cfg())}
-    expired = load_expired_clients()
-    peer = peers_by_key.get(pk)
-    if peer:
-        return {"client": {
-            "name": peer.get("name", ""),
-            "clientId": cid,
-            "status": "active",
-            "expiresAt": peer.get("expiresAt", ""),
-            "hasConfig": os.path.exists(client_export_path(pk)),
-        }}
-    if pk in expired:
-        exp = expired[pk]
-        return {"client": {
-            "name": exp.get("name", ""),
-            "clientId": cid,
-            "status": "expired",
-            "expiresAt": exp.get("expiresAt", ""),
-            "hasConfig": os.path.exists(client_export_path(pk)),
-        }}
+    if pk:
+        meta = load_clients_meta()
+        stored = meta.get(pk, {}).get("contact", "").strip().lower()
+        if not stored or stored != contact_norm:
+            raise HTTPException(401, "Invalid credentials")
+        peers_by_key = {p.get("PublicKey", "").strip(): p for p in parse_peers(read_cfg())}
+        expired = load_expired_clients()
+        peer = peers_by_key.get(pk)
+        if peer:
+            return {"client": {"name": peer.get("name", ""), "clientId": cid, "status": "active", "expiresAt": peer.get("expiresAt", ""), "hasConfig": os.path.exists(client_export_path(pk))}}
+        if pk in expired:
+            exp = expired[pk]
+            return {"client": {"name": exp.get("name", ""), "clientId": cid, "status": "expired", "expiresAt": exp.get("expiresAt", ""), "hasConfig": os.path.exists(client_export_path(pk))}}
+    # Remote: find which server has this client, then verify contact
+    for s in load_servers():
+        # Try the verify endpoint (available on new agents)
+        status, raw = _portal_proxy_get(s["baseUrl"], f"/api/portal/verify?client_id={quote(cid)}&contact={quote(contact_norm)}")
+        if status == 200 and raw:
+            try:
+                return json.loads(raw)
+            except Exception:
+                pass
+        if status == 401:
+            raise HTTPException(401, "Invalid credentials")
+        # Fallback for old agents: check via admin API
+        status_lu, raw_lu = _portal_proxy_get(s["baseUrl"], f"/api/portal/lookup-by-id?client_id={quote(cid)}")
+        if status_lu != 200 or not raw_lu:
+            continue
+        try:
+            client_data = json.loads(raw_lu).get("client")
+        except Exception:
+            continue
+        if not client_data:
+            continue
+        # Client found on this server — verify contact via admin API
+        stored = _remote_client_contact(s, cid)
+        if stored is None:
+            raise HTTPException(401, "Invalid credentials")
+        if stored.strip().lower() != contact_norm:
+            raise HTTPException(401, "Invalid credentials")
+        return {"client": client_data}
     raise HTTPException(401, "Invalid credentials")
 
 
@@ -1754,32 +1917,29 @@ def portal_lookup(contact: str = Query(...)):
     contact_norm = contact.strip().lower()
     if not contact_norm:
         raise HTTPException(400, "Contact is required")
+    result = []
+    # Local
     meta = load_clients_meta()
     matching = {pk: m for pk, m in meta.items() if m.get("contact", "").strip().lower() == contact_norm}
-    if not matching:
-        return {"clients": []}
     peers_by_key = {p.get("PublicKey", "").strip(): p for p in parse_peers(read_cfg())}
     expired = load_expired_clients()
-    result = []
     for pk, m in matching.items():
         peer = peers_by_key.get(pk)
         if peer:
-            result.append({
-                "name": peer.get("name", ""),
-                "clientId": m.get("id", ""),
-                "status": "active",
-                "expiresAt": peer.get("expiresAt", ""),
-                "hasConfig": os.path.exists(client_export_path(pk)),
-            })
+            result.append({"name": peer.get("name", ""), "clientId": m.get("id", ""), "status": "active", "expiresAt": peer.get("expiresAt", ""), "hasConfig": os.path.exists(client_export_path(pk))})
         elif pk in expired:
             exp = expired[pk]
-            result.append({
-                "name": exp.get("name", ""),
-                "clientId": m.get("id", ""),
-                "status": "expired",
-                "expiresAt": exp.get("expiresAt", ""),
-                "hasConfig": os.path.exists(client_export_path(pk)),
-            })
+            result.append({"name": exp.get("name", ""), "clientId": m.get("id", ""), "status": "expired", "expiresAt": exp.get("expiresAt", ""), "hasConfig": os.path.exists(client_export_path(pk))})
+    # Remote: aggregate from every registered server
+    for s in load_servers():
+        status, raw = _portal_proxy_get(s["baseUrl"], f"/api/portal/lookup?contact={quote(contact_norm)}")
+        if status != 200 or not raw:
+            continue
+        try:
+            remote_clients = json.loads(raw).get("clients", [])
+            result.extend(remote_clients)
+        except Exception:
+            pass
     return {"clients": result}
 
 
@@ -1789,18 +1949,24 @@ def portal_config_download(contact: str = Query(...), client_id: str = Query(...
     client_id = client_id.strip()
     if not contact_norm or not client_id:
         raise HTTPException(400, "Contact and client ID are required")
+    # Local
     meta = load_clients_meta()
     pk = next(
         (key for key, m in meta.items()
          if m.get("contact", "").strip().lower() == contact_norm and m.get("id", "") == client_id),
         None,
     )
-    if not pk:
-        raise HTTPException(404, "Client not found")
-    cfg = load_client_export(pk)
-    if not cfg:
-        raise HTTPException(404, "Config not available. Contact your administrator.")
-    return Response(content=cfg, media_type="text/plain; charset=utf-8")
+    if pk:
+        cfg = load_client_export(pk)
+        if not cfg:
+            raise HTTPException(404, "Config not available. Contact your administrator.")
+        return Response(content=cfg, media_type="text/plain; charset=utf-8")
+    # Remote: proxy the full request (remote server verifies contact+id itself)
+    for s in load_servers():
+        status, raw = _portal_proxy_get(s["baseUrl"], f"/api/portal/config?contact={quote(contact_norm)}&client_id={quote(client_id)}")
+        if status == 200 and raw:
+            return Response(content=raw, media_type="text/plain; charset=utf-8")
+    raise HTTPException(404, "Client not found")
 
 
 # ─── CSV export ───────────────────────────────────────────────────────────────

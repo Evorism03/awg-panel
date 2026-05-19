@@ -65,6 +65,7 @@ const dict = {
     noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.', details:'Подробнее', lastSeen:'Последнее подключение', never:'Никогда', download:'Скачать', copyConfig:'Скопировать конфиг', received:'Загрузка', sent:'Отдача', createdClients:'Созданных клиентов',
     contact:'Контакт', contactPlaceholder:'Email или телефон', clientId:'ID клиента', editContact:'Изменить контакт', saveContact:'Сохранить контакт',
     renew:'Продлить', renewClient:'Продлить подписку', renewConfirm:'Выберите срок продления', renewSuccess:'Подписка продлена',
+    renewByIdTitle:'Продление подписки', renewByIdDesc:'Введите Client ID чтобы продлить подписку.', renewByIdAction:'Продлить', renewByIdSuccess:'Продлена до', renewByIdPending:'Заявка принята, ожидает обработки', renewByIdNotFound:'Клиент не найден',
     portal:'Личный кабинет', portalCabinet:'Кабинет', portalById:'По Client ID', portalByIdDesc:'Введите ваш Client ID для просмотра подписки', portalByIdNotFound:'Клиент с таким ID не найден', portalByEmail:'По Email', portalByEmailDesc:'Введите email для поиска всех ваших подписок', portalNotFound:'Подписки не найдены', portalSearch:'Найти', portalIdLabel:'Client ID', portalEmailLabel:'Email', portalActive:'Активна', portalExpired:'Истекла', portalExpires:'Действует до', portalGetConfig:'Скачать конфиг', portalShowQr:'Показать QR', portalConfigNotAvail:'Конфиг недоступен — обратитесь к администратору',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Текущая панель', deleteServer:'Удалить сервер?',
     sortBy:'Сортировка', sortNameAsc:'Имя A-Z', sortNameDesc:'Имя Z-A', sortCreatedDesc:'Дата создания, новые', sortCreatedAsc:'Дата создания, старые', sortLastSeenDesc:'Последнее подключение, новые', sortLastSeenAsc:'Последнее подключение, старые', selectAll:'Выбрать все', clearSelection:'Снять выбор', deleteSelected:'Удалить выбранные', selectedClients:'Выбрано клиентов', createdOnly:'Дата создания', lastConnection:'Последнее подключение', deleting:'Удаление', deleted:'Удалено', bulkActions:'Действия группы', bulkReady:'Можно удалять выбранных', editExpiry:'Изменить дату окончания', clearExpiry:'Без ограничений'
@@ -96,6 +97,7 @@ const dict = {
     noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.', details:'Details', lastSeen:'Last connected', never:'Never', download:'Download', copyConfig:'Copy config', received:'Received', sent:'Sent', createdClients:'Created clients',
     contact:'Contact', contactPlaceholder:'Email or phone', clientId:'Client ID', editContact:'Edit contact', saveContact:'Save contact',
     renew:'Renew', renewClient:'Renew subscription', renewConfirm:'Select renewal term', renewSuccess:'Subscription renewed',
+    renewByIdTitle:'Subscription renewal', renewByIdDesc:'Enter your Client ID to renew your subscription.', renewByIdAction:'Renew', renewByIdSuccess:'Renewed until', renewByIdPending:'Request submitted, awaiting processing', renewByIdNotFound:'Client not found',
     portal:'My Account', portalCabinet:'Account', portalById:'By Client ID', portalByIdDesc:'Enter your Client ID to view your subscription', portalByIdNotFound:'No client found with this ID', portalByEmail:'By Email', portalByEmailDesc:'Enter your email to find all your subscriptions', portalNotFound:'No subscriptions found', portalSearch:'Find', portalIdLabel:'Client ID', portalEmailLabel:'Email', portalActive:'Active', portalExpired:'Expired', portalExpires:'Valid until', portalGetConfig:'Download config', portalShowQr:'Show QR', portalConfigNotAvail:'Config not available — contact your administrator',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Current panel', deleteServer:'Delete server?',
     sortBy:'Sort', sortNameAsc:'Name A-Z', sortNameDesc:'Name Z-A', sortCreatedDesc:'Created newest', sortCreatedAsc:'Created oldest', sortLastSeenDesc:'Last connected newest', sortLastSeenAsc:'Last connected oldest', selectAll:'Select all', clearSelection:'Clear selection', deleteSelected:'Delete selected', selectedClients:'Selected clients', createdOnly:'Created date', lastConnection:'Last connected', deleting:'Deleting', deleted:'Deleted', bulkActions:'Group actions', bulkReady:'Ready to delete selected', editExpiry:'Edit expiry date', clearExpiry:'No limit'
@@ -279,6 +281,9 @@ function App(){
   const [portalEmailLoading,setPortalEmailLoading]=useState(false);
   const [portalEmailConfigs,setPortalEmailConfigs]=useState({});
   const [portalEmailQr,setPortalEmailQr]=useState({});
+  const [portalRenewId,setPortalRenewId]=useState('');
+  const [portalRenewResult,setPortalRenewResult]=useState(null);
+  const [portalRenewLoading,setPortalRenewLoading]=useState(false);
   const [expandedClientKey,setExpandedClientKey]=useState('');
   const [expandedServerId,setExpandedServerId]=useState('');
   const [expandedOrderId,setExpandedOrderId]=useState('');
@@ -591,6 +596,21 @@ function App(){
       const text=await r.text();
       setPortalEmailConfigs(prev=>({...prev,[c.clientId]:text}));
     }catch{ alert(t('portalConfigNotAvail')); }
+  };
+  const portalRenewById=async()=>{
+    const cid=portalRenewId.trim();
+    if(!cid) return;
+    setPortalRenewLoading(true);
+    setPortalRenewResult(null);
+    try{
+      const r=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:cid,term:orderPlan})});
+      const j=await r.json();
+      if(!r.ok){ setPortalRenewResult({error:j.detail||t('renewByIdNotFound')}); return; }
+      const ord=j.order||{};
+      if(ord.status==='issued') setPortalRenewResult({success:true,expiresAt:ord.expiresAt||''});
+      else setPortalRenewResult({pending:true});
+    }catch{ setPortalRenewResult({error:t('renewByIdNotFound')}); }
+    finally{ setPortalRenewLoading(false); }
   };
   const renameClient=async(client)=>{
     const nextName = editingClientName.trim();
@@ -1327,18 +1347,42 @@ function App(){
           ))}
         </div>
       </div>
-      <div className="card public-order-card">
-        <div className="panel-head">
-          <div>
-            <h2>{t('newOrder')}</h2>
-            <p>{t('purchaseOrderSub')}</p>
+      <div style={{display:'flex',flexDirection:'column',gap:'16px'}}>
+        <div className="card public-order-card">
+          <div className="panel-head">
+            <div>
+              <h2>{t('newOrder')}</h2>
+              <p>{t('purchaseOrderSub')}</p>
+            </div>
           </div>
+          <div className="client-form-grid">
+            <label>{t('orderLogin')}<input value={orderLogin} onChange={e=>setOrderLogin(e.target.value)} placeholder={t('orderLoginPlaceholder')} /></label>
+            <label>{t('orderEmail')}<input value={orderEmail} onChange={e=>setOrderEmail(e.target.value)} placeholder={t('orderEmailPlaceholder')} /></label>
+          </div>
+          <button onClick={()=>addOrder().catch(handleError)} disabled={!orderLogin.trim() || !orderEmail.trim()}><Plus size={16}/>{t('purchaseAction')}</button>
         </div>
-        <div className="client-form-grid">
-          <label>{t('orderLogin')}<input value={orderLogin} onChange={e=>setOrderLogin(e.target.value)} placeholder={t('orderLoginPlaceholder')} /></label>
-          <label>{t('orderEmail')}<input value={orderEmail} onChange={e=>setOrderEmail(e.target.value)} placeholder={t('orderEmailPlaceholder')} /></label>
+        <div className="card">
+          <div className="panel-head">
+            <div>
+              <h2>{t('renewByIdTitle')}</h2>
+              <p>{t('renewByIdDesc')}</p>
+            </div>
+          </div>
+          <div className="client-form-grid">
+            <label>{t('portalIdLabel')}<input value={portalRenewId} onChange={e=>setPortalRenewId(e.target.value)} placeholder="4a989d39" onKeyDown={e=>{ if(e.key==='Enter') portalRenewById().catch(handleError); }}/></label>
+          </div>
+          {portalRenewResult && (
+            portalRenewResult.success
+              ? <p className="portal-ok"><Check size={13}/> {t('renewByIdSuccess')} {portalRenewResult.expiresAt||'∞'}</p>
+              : portalRenewResult.pending
+              ? <p className="portal-no-config">{t('renewByIdPending')}</p>
+              : <p className="portal-no-config">{portalRenewResult.error||t('renewByIdNotFound')}</p>
+          )}
+          <button onClick={()=>portalRenewById().catch(handleError)} disabled={portalRenewLoading||!portalRenewId.trim()}>
+            {portalRenewLoading?<Loader2 size={16} className="spin-icon"/>:<RotateCcw size={16}/>}
+            {t('renewByIdAction')}
+          </button>
         </div>
-        <button onClick={()=>addOrder().catch(handleError)} disabled={!orderLogin.trim() || !orderEmail.trim()}><Plus size={16}/>{t('purchaseAction')}</button>
       </div>
     </section>
 

@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# ─── Colour helpers ───────────────────────────────────────────────────────────
+# ─── Colours ──────────────────────────────────────────────────────────────────
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
-  C_RESET='\033[0m'
-  C_BOLD='\033[1m'
-  C_GREEN='\033[0;32m'
-  C_CYAN='\033[0;36m'
+  C_RESET='\033[0m'   C_BOLD='\033[1m'     C_DIM='\033[2m'
+  C_GREEN='\033[0;32m'  C_BGREEN='\033[1;32m'
+  C_CYAN='\033[0;36m'   C_BCYAN='\033[1;36m'
   C_YELLOW='\033[1;33m'
-  C_RED='\033[0;31m'
-  C_DIM='\033[2m'
+  C_RED='\033[0;31m'    C_BRED='\033[1;31m'
 else
-  C_RESET=''; C_BOLD=''; C_GREEN=''; C_CYAN=''; C_YELLOW=''; C_RED=''; C_DIM=''
+  C_RESET=''; C_BOLD=''; C_DIM=''
+  C_GREEN=''; C_BGREEN=''; C_CYAN=''; C_BCYAN=''
+  C_YELLOW=''; C_RED=''; C_BRED=''
 fi
 
 APP_NAME="awg-panel"
@@ -35,6 +35,9 @@ BACKUP_DIR="${BACKUP_DIR:-/opt/awg-panel-backups}"
 SKIP_DOCKER_INSTALL="${SKIP_DOCKER_INSTALL:-0}"
 FORCE_PORT="${FORCE_PORT:-0}"
 
+STEP_N=0
+_SPIN_PID=''
+
 frontend_enabled() { [ "$INSTALL_MODE" = "panel" ]; }
 
 normalize_mode() {
@@ -45,15 +48,60 @@ normalize_mode() {
   fi
 }
 
-# ─── Logging ─────────────────────────────────────────────────────────────────
-log()      { printf "${C_GREEN}▶${C_RESET} ${C_BOLD}%s${C_RESET}\n" "$*"; }
-log_dim()  { printf "${C_DIM}  %s${C_RESET}\n" "$*"; }
-log_warn() { printf "${C_YELLOW}⚠ %s${C_RESET}\n" "$*"; }
-step()     { printf "\n${C_CYAN}${C_BOLD}━━━ %s ━━━${C_RESET}\n\n" "$*"; }
+# ─── Logging ──────────────────────────────────────────────────────────────────
+log()      { printf "  ${C_BGREEN}▶${C_RESET}  ${C_BOLD}%s${C_RESET}\n" "$*"; }
+log_ok()   { printf "  ${C_BGREEN}✓${C_RESET}  %s\n" "$*"; }
+log_dim()  { printf "  ${C_DIM}   %s${C_RESET}\n" "$*"; }
+log_warn() { printf "  ${C_YELLOW}⚠${C_RESET}  %s\n" "$*"; }
+
+step() {
+  STEP_N=$(( STEP_N + 1 ))
+  printf "\n  ${C_BCYAN}${C_BOLD}◈  Step %d  —  %s${C_RESET}\n" "$STEP_N" "$*"
+  printf "  ${C_DIM}──────────────────────────────────────────────────${C_RESET}\n\n"
+}
 
 fail() {
-  printf "\n${C_RED}${C_BOLD}✗ ERROR:${C_RESET}${C_RED} %s${C_RESET}\n\n" "$*" >&2
+  spin_stop 2>/dev/null || true
+  printf "\n  ${C_BRED}${C_BOLD}✗  ERROR:${C_RESET}  ${C_RED}%s${C_RESET}\n\n" "$*" >&2
   exit 1
+}
+
+# ─── Spinner ──────────────────────────────────────────────────────────────────
+spin_start() {
+  [ -t 1 ] || return 0
+  local msg="${1:-}"
+  (
+    local -a fr=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    local n=0
+    while true; do
+      printf "\r  \033[36m%s\033[0m  %s  " "${fr[$n]}" "$msg"
+      n=$(( (n+1) % 10 ))
+      sleep 0.1
+    done
+  ) &
+  _SPIN_PID=$!
+}
+
+spin_stop() {
+  if [ -n "$_SPIN_PID" ]; then
+    kill "$_SPIN_PID" 2>/dev/null || true
+    wait "$_SPIN_PID" 2>/dev/null || true
+    _SPIN_PID=''
+    printf "\r\033[2K"
+  fi
+}
+
+trap 'spin_stop 2>/dev/null || true' EXIT
+
+# ─── Banner ───────────────────────────────────────────────────────────────────
+banner() {
+  printf "\n"
+  printf "  ${C_BCYAN}╔════════════════════════════════════════════╗${C_RESET}\n"
+  printf "  ${C_BCYAN}║${C_RESET}                                            ${C_BCYAN}║${C_RESET}\n"
+  printf "  ${C_BCYAN}║${C_RESET}    ${C_BOLD}◈  AmneziaWG Panel  ·  Installer${C_RESET}       ${C_BCYAN}║${C_RESET}\n"
+  printf "  ${C_BCYAN}║${C_RESET}                                            ${C_BCYAN}║${C_RESET}\n"
+  printf "  ${C_BCYAN}╚════════════════════════════════════════════╝${C_RESET}\n"
+  printf "\n"
 }
 
 require_root() {
@@ -75,10 +123,10 @@ install_docker_if_missing() {
   apt-get update -qq
   apt-get install -y -qq docker.io ca-certificates curl
   systemctl enable --now docker
-  log "Docker installed"
+  log_ok "Docker installed"
 }
 
-# ─── Compose detection ───────────────────────────────────────────────────────
+# ─── Compose detection ────────────────────────────────────────────────────────
 compose_cmd() {
   if docker compose version >/dev/null 2>&1; then
     printf 'docker compose'; return
@@ -128,8 +176,9 @@ copy_project() {
     local ts
     ts="$(date +%Y%m%d-%H%M%S)"
     tar -czf "$BACKUP_DIR/awg-panel-$ts.tar.gz" -C "$(dirname "$INSTALL_DIR")" "$(basename "$INSTALL_DIR")"
-    log_dim "Backup saved: $BACKUP_DIR/awg-panel-$ts.tar.gz"
+    log_dim "Backup saved → $BACKUP_DIR/awg-panel-$ts.tar.gz"
   fi
+  spin_start "Copying project files…"
   tar \
     --exclude='.git' \
     --exclude='.agents' \
@@ -147,8 +196,9 @@ copy_project() {
   rm -rf "$INSTALL_DIR/qr-renderer"
   tar -xzf /tmp/awg-panel-install.tar.gz -C "$INSTALL_DIR"
   rm -f /tmp/awg-panel-install.tar.gz
+  spin_stop
   mkdir -p "$INSTALL_DIR/data/clients"
-  log "Files installed"
+  log_ok "Files installed"
 }
 
 # ─── Detection helpers ────────────────────────────────────────────────────────
@@ -228,7 +278,7 @@ detect_awg_config_path() {
   ' sh "$iface" 2>/dev/null || true
 }
 
-# ─── .env management ─────────────────────────────────────────────────────────
+# ─── .env management ──────────────────────────────────────────────────────────
 ensure_env_key() {
   local env_path="$1" key="$2" value="$3"
   grep -q "^${key}=" "$env_path" && return
@@ -273,7 +323,7 @@ update_existing_env() {
     local port="${AWG_PORT:-${old_ep##*:}}"
     [ -n "$current_ip" ] && [ -n "$port" ] && new_ep="$current_ip:$port"
   fi
-  [ -n "$new_ep" ] && set_env_key "$env_path" "SERVER_ENDPOINT" "$new_ep" && log_dim "SERVER_ENDPOINT updated: $new_ep"
+  [ -n "$new_ep" ] && set_env_key "$env_path" "SERVER_ENDPOINT" "$new_ep" && log_dim "SERVER_ENDPOINT updated → $new_ep"
 }
 
 write_env_if_missing() {
@@ -289,17 +339,17 @@ write_env_if_missing() {
   local awg_container awg_port server_ip awg_config_path awg_iface admin_token admin_password
   awg_container="$(detect_awg_container)"
   [ -n "$awg_container" ] || fail "Could not detect AmneziaWG container. Run with AWG_DOCKER_CONTAINER=<name>."
-  log_dim "AmneziaWG container: $awg_container"
+  log_dim "AmneziaWG container → $awg_container"
 
   awg_port="$(detect_udp_port "$awg_container")"
   [ -n "$awg_port" ] || awg_port="${AWG_PORT:-51820}"
 
   server_ip="$(detect_public_ip)"
-  log_dim "Server IP: $server_ip"
+  log_dim "Server IP → $server_ip"
 
   awg_config_path="$(detect_awg_config_path "$awg_container")"
   [ -n "$awg_config_path" ] || fail "Could not detect AmneziaWG config in container '$awg_container'.\nRun with AWG_CONTAINER_CONFIG_PATH=/path/to/awg0.conf."
-  log_dim "AWG config: $awg_config_path"
+  log_dim "AWG config → $awg_config_path"
 
   awg_iface="${AWG_INTERFACE:-$(interface_from_config_path "$awg_config_path")}"
 
@@ -339,7 +389,7 @@ WEBHOOK_URL=${WEBHOOK_URL:-}
 WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
 EOF_ENV
   chmod 600 "$env_path"
-  log "Config written: $env_path"
+  log_ok "Config written → $env_path"
 }
 
 # ─── Start containers ─────────────────────────────────────────────────────────
@@ -347,7 +397,7 @@ start_with_compose() {
   local cmd="$1"
   local services="backend"
   frontend_enabled && services="backend frontend"
-  step "Starting containers"
+  step "Building & starting containers"
   log_dim "Using: $cmd"
   cd "$INSTALL_DIR"
   docker rm -f "$FRONTEND_CONTAINER" "$BACKEND_CONTAINER" "$LEGACY_QR_CONTAINER" >/dev/null 2>&1 || true
@@ -355,15 +405,33 @@ start_with_compose() {
 }
 
 start_manually() {
-  step "Starting containers (manual)"
+  step "Building & starting containers"
   log_dim "docker compose unavailable — building manually"
   docker network inspect "$NETWORK_NAME" >/dev/null 2>&1 || docker network create "$NETWORK_NAME" >/dev/null
 
-  docker build -t "$BACKEND_IMAGE" "$INSTALL_DIR/backend"
-  frontend_enabled && docker build -t "$FRONTEND_IMAGE" "$INSTALL_DIR/frontend"
+  local _log; _log="$(mktemp)"
+
+  spin_start "Building backend image…"
+  if ! docker build -t "$BACKEND_IMAGE" "$INSTALL_DIR/backend" >"$_log" 2>&1; then
+    spin_stop; cat "$_log" >&2; rm -f "$_log"
+    fail "Backend image build failed."
+  fi
+  spin_stop; rm -f "$_log"
+  log_ok "Backend image built"
+
+  if frontend_enabled; then
+    spin_start "Building frontend image…"
+    if ! docker build -t "$FRONTEND_IMAGE" "$INSTALL_DIR/frontend" >"$_log" 2>&1; then
+      spin_stop; cat "$_log" >&2; rm -f "$_log"
+      fail "Frontend image build failed."
+    fi
+    spin_stop; rm -f "$_log"
+    log_ok "Frontend image built"
+  fi
 
   docker rm -f "$FRONTEND_CONTAINER" "$BACKEND_CONTAINER" "$LEGACY_QR_CONTAINER" >/dev/null 2>&1 || true
 
+  log "Starting backend container…"
   docker run -d \
     --name "$BACKEND_CONTAINER" \
     --restart unless-stopped \
@@ -374,16 +442,18 @@ start_manually() {
     -v /var/run/docker.sock:/var/run/docker.sock \
     -p "$BACKEND_BIND:$BACKEND_PORT:8090" \
     "$BACKEND_IMAGE" >/dev/null
+  log_ok "Backend started"
 
   if frontend_enabled; then
+    log "Starting frontend container…"
     docker run -d \
       --name "$FRONTEND_CONTAINER" \
       --restart unless-stopped \
       --network "$NETWORK_NAME" \
       -p "$PANEL_HTTP_BIND:$PANEL_HTTP_PORT:80" \
       "$FRONTEND_IMAGE" >/dev/null
+    log_ok "Frontend started"
   fi
-
 }
 
 # ─── HTTP helper (curl or wget) ───────────────────────────────────────────────
@@ -401,19 +471,24 @@ http_head_ok() {
   return 1
 }
 
-# ─── Healthcheck ─────────────────────────────────────────────────────────────
+# ─── Healthcheck ──────────────────────────────────────────────────────────────
 healthcheck() {
   step "Verifying installation"
   local attempt
+  spin_start "Waiting for backend to start…"
   for attempt in $(seq 1 35); do
-    if http_ok "http://127.0.0.1:$BACKEND_PORT/api/health"; then break; fi
+    if http_ok "http://127.0.0.1:$BACKEND_PORT/api/health"; then
+      spin_stop
+      log_ok "Backend is up"
+      break
+    fi
     if [ "$attempt" = "35" ]; then
+      spin_stop
       docker logs --tail 80 "$BACKEND_CONTAINER" >&2 || true
       fail "Backend healthcheck failed after 35 attempts."
     fi
     sleep 1
   done
-  log "Backend is up"
 
   docker exec "$BACKEND_CONTAINER" sh -lc '
     case "${MOCK_AWG:-false}" in 1|true|yes|on) exit 0;; esac
@@ -426,10 +501,16 @@ healthcheck() {
   ' || fail "Backend cannot reach Docker or AmneziaWG config.\nCheck /var/run/docker.sock, AWG_DOCKER_CONTAINER, and AWG_CONTAINER_CONFIG_PATH."
 
   if frontend_enabled; then
-    http_head_ok "http://127.0.0.1:$PANEL_HTTP_PORT" || fail "Frontend healthcheck failed."
-    log "Frontend is up"
+    spin_start "Checking frontend…"
+    if ! http_head_ok "http://127.0.0.1:$PANEL_HTTP_PORT"; then
+      spin_stop
+      fail "Frontend healthcheck failed."
+    fi
+    spin_stop
+    log_ok "Frontend is up"
   fi
 
+  printf "\n"
   docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' \
     | grep -E "${FRONTEND_CONTAINER}|${BACKEND_CONTAINER}|NAMES" || true
 }
@@ -442,15 +523,14 @@ env_value() {
   sed -n "s/^${key}=//p" "$env_path" | head -n 1
 }
 
-# ─── Summary ─────────────────────────────────────────────────────────────────
+# ─── Summary ──────────────────────────────────────────────────────────────────
 print_summary() {
-  local admin_token admin_username admin_password server_endpoint awg_container awg_port panel_url mode_label
+  local admin_token admin_username admin_password server_endpoint awg_container panel_url mode_label
   admin_token="$(env_value ADMIN_TOKEN)"
   admin_username="$(env_value ADMIN_USERNAME)"
   admin_password="$(env_value ADMIN_PASSWORD)"
   server_endpoint="$(env_value SERVER_ENDPOINT)"
   awg_container="$(env_value AWG_DOCKER_CONTAINER)"
-  awg_port="${server_endpoint##*:}"
 
   if frontend_enabled; then
     panel_url="http://$(detect_public_ip):$PANEL_HTTP_PORT"
@@ -460,27 +540,29 @@ print_summary() {
     mode_label="Agent API"
   fi
 
-  local sep="──────────────────────────────────────────────────"
-  printf "\n${C_CYAN}${C_BOLD}%s${C_RESET}\n" "$sep"
-  printf "${C_CYAN}${C_BOLD}  AmneziaWG Panel — Installation complete${C_RESET}\n"
-  printf "${C_CYAN}${C_BOLD}%s${C_RESET}\n" "$sep"
-  printf "  ${C_DIM}Mode:${C_RESET}        %s\n"           "$mode_label"
-  printf "  ${C_DIM}Panel URL:${C_RESET}   ${C_BOLD}%s${C_RESET}\n" "$panel_url"
-  printf "  ${C_DIM}ADMIN_TOKEN:${C_RESET} ${C_YELLOW}%s${C_RESET}\n" "$admin_token"
-  printf "  ${C_DIM}Login:${C_RESET}       %s\n"           "${admin_username:-admin}"
-  printf "  ${C_DIM}Password:${C_RESET}    ${C_YELLOW}%s${C_RESET}\n" "$admin_password"
-  printf "  ${C_DIM}WG endpoint:${C_RESET} %s\n"           "$server_endpoint"
-  printf "  ${C_DIM}AWG container:${C_RESET} %s\n"         "$awg_container"
-  printf "${C_CYAN}${C_BOLD}%s${C_RESET}\n\n" "$sep"
-
-  printf "${C_DIM}To add this VPS to another panel: Panel URL + ADMIN_TOKEN.${C_RESET}\n"
-  printf "${C_DIM}Installer did NOT modify system nginx, ports 80/443, or existing sites.${C_RESET}\n"
-  printf "${C_DIM}Audit log: GET /api/audit-log  |  CSV export: GET /api/clients/export.csv${C_RESET}\n"
+  local S="══════════════════════════════════════════════════"
+  printf "\n"
+  printf "  ${C_BCYAN}╔%s${C_RESET}\n" "$S"
+  printf "  ${C_BCYAN}║${C_RESET}  ${C_BGREEN}✓${C_RESET}  ${C_BOLD}AmneziaWG Panel — Installation Complete${C_RESET}\n"
+  printf "  ${C_BCYAN}╠%s${C_RESET}\n" "$S"
+  printf "  ${C_BCYAN}║${C_RESET}  ${C_DIM}%-14s${C_RESET}  %s\n"                    "Mode"          "$mode_label"
+  printf "  ${C_BCYAN}║${C_RESET}  ${C_DIM}%-14s${C_RESET}  ${C_BOLD}%s${C_RESET}\n" "Panel URL"     "$panel_url"
+  printf "  ${C_BCYAN}╠%s${C_RESET}\n" "$S"
+  printf "  ${C_BCYAN}║${C_RESET}  ${C_DIM}%-14s${C_RESET}  %s\n"                    "Username"      "${admin_username:-admin}"
+  printf "  ${C_BCYAN}║${C_RESET}  ${C_DIM}%-14s${C_RESET}  ${C_YELLOW}%s${C_RESET}\n" "Password"    "$admin_password"
+  printf "  ${C_BCYAN}║${C_RESET}  ${C_DIM}%-14s${C_RESET}  ${C_YELLOW}%s${C_RESET}\n" "Token"       "$admin_token"
+  printf "  ${C_BCYAN}╠%s${C_RESET}\n" "$S"
+  printf "  ${C_BCYAN}║${C_RESET}  ${C_DIM}%-14s${C_RESET}  %s\n"                    "WG Endpoint"   "$server_endpoint"
+  printf "  ${C_BCYAN}║${C_RESET}  ${C_DIM}%-14s${C_RESET}  %s\n"                    "AWG Container"  "$awg_container"
+  printf "  ${C_BCYAN}╚%s${C_RESET}\n" "$S"
+  printf "\n"
+  printf "  ${C_DIM}To add this VPS to another panel: Panel URL + Token above.${C_RESET}\n"
+  printf "  ${C_DIM}Audit log: /api/audit-log  ·  CSV export: /api/clients/export.csv${C_RESET}\n"
   local webhook_url; webhook_url="$(env_value WEBHOOK_URL)"
   if [ -n "$webhook_url" ]; then
-    printf "${C_DIM}Webhooks enabled → %s${C_RESET}\n" "$webhook_url"
+    printf "  ${C_DIM}Webhooks enabled → %s${C_RESET}\n" "$webhook_url"
   else
-    printf "${C_DIM}Webhooks: set WEBHOOK_URL in .env to receive event notifications.${C_RESET}\n"
+    printf "  ${C_DIM}Webhooks: set WEBHOOK_URL in .env to enable event notifications.${C_RESET}\n"
   fi
   printf "\n"
 }
@@ -491,17 +573,17 @@ wizard() {
   [ "${INTERACTIVE:-1}" = "0" ] && return 0
 
   step "Configuration wizard"
-  printf "${C_DIM}Press Enter to accept the default shown in brackets.${C_RESET}\n\n"
+  printf "  ${C_DIM}Press Enter to accept the default shown in [brackets].${C_RESET}\n\n"
 
   local _ans
 
   # ── Install mode ──────────────────────────────────────────────────────────
-  printf "${C_BOLD}Install mode:${C_RESET}\n"
-  printf "  ${C_CYAN}1${C_RESET}) Full panel  (frontend + backend)\n"
-  printf "  ${C_CYAN}2${C_RESET}) Agent only  (backend API, no frontend)\n"
+  printf "  ${C_BOLD}Install mode${C_RESET}\n"
+  printf "    ${C_CYAN}1${C_RESET}  Full panel   ${C_DIM}(frontend + backend + web UI)${C_RESET}\n"
+  printf "    ${C_CYAN}2${C_RESET}  Agent only   ${C_DIM}(backend API, no UI — for additional VPS)${C_RESET}\n"
   local _mode_default=1
   [ "$INSTALL_MODE" = "agent" ] && _mode_default=2
-  printf "Choice [${C_CYAN}%s${C_RESET}]: " "$_mode_default"
+  printf "\n  ${C_DIM}Choice${C_RESET} [${C_CYAN}%s${C_RESET}]: " "$_mode_default"
   read -r _ans
   case "${_ans:-$_mode_default}" in
     2) INSTALL_MODE="agent" ;;
@@ -520,22 +602,22 @@ wizard() {
   local _detected_ip
   _detected_ip="$(detect_public_ip)"
   local _default_ip="${SERVER_IP:-$_detected_ip}"
-  printf "${C_BOLD}Server public IP${C_RESET}     [${C_CYAN}%s${C_RESET}]: " "$_default_ip"
+  printf "  ${C_BOLD}Server public IP${C_RESET}     [${C_CYAN}%s${C_RESET}]: " "$_default_ip"
   read -r _ans
   SERVER_IP="${_ans:-$_default_ip}"
 
   # ── Port(s) ───────────────────────────────────────────────────────────────
   if [ "$INSTALL_MODE" = "panel" ]; then
-    printf "${C_BOLD}Panel HTTP port${C_RESET}      [${C_CYAN}%s${C_RESET}]: " "$PANEL_HTTP_PORT"
+    printf "  ${C_BOLD}Panel HTTP port${C_RESET}      [${C_CYAN}%s${C_RESET}]: " "$PANEL_HTTP_PORT"
     read -r _ans
     PANEL_HTTP_PORT="${_ans:-$PANEL_HTTP_PORT}"
   else
-    printf "${C_BOLD}Backend API port${C_RESET}     [${C_CYAN}%s${C_RESET}]: " "$BACKEND_PORT"
+    printf "  ${C_BOLD}Backend API port${C_RESET}     [${C_CYAN}%s${C_RESET}]: " "$BACKEND_PORT"
     read -r _ans
     BACKEND_PORT="${_ans:-$BACKEND_PORT}"
 
-    printf "${C_DIM}  0.0.0.0 = доступен из сети, 127.0.0.1 = только локально${C_RESET}\n"
-    printf "${C_BOLD}Backend bind${C_RESET}         [${C_CYAN}%s${C_RESET}]: " "$BACKEND_BIND"
+    printf "  ${C_DIM}    0.0.0.0 = accessible from network · 127.0.0.1 = local only${C_RESET}\n"
+    printf "  ${C_BOLD}Backend bind${C_RESET}         [${C_CYAN}%s${C_RESET}]: " "$BACKEND_BIND"
     read -r _ans
     BACKEND_BIND="${_ans:-$BACKEND_BIND}"
   fi
@@ -544,7 +626,7 @@ wizard() {
   local _detected_container
   _detected_container="$(detect_awg_container || true)"
   local _default_container="${AWG_DOCKER_CONTAINER:-${_detected_container:-amnezia-awg}}"
-  printf "${C_BOLD}AmneziaWG container${C_RESET}  [${C_CYAN}%s${C_RESET}]: " "$_default_container"
+  printf "  ${C_BOLD}AmneziaWG container${C_RESET}  [${C_CYAN}%s${C_RESET}]: " "$_default_container"
   read -r _ans
   AWG_DOCKER_CONTAINER="${_ans:-$_default_container}"
 
@@ -552,7 +634,7 @@ wizard() {
   local _detected_port=""
   [ -n "$AWG_DOCKER_CONTAINER" ] && _detected_port="$(detect_udp_port "$AWG_DOCKER_CONTAINER" || true)"
   local _default_wgport="${AWG_PORT:-${_detected_port:-51820}}"
-  printf "${C_BOLD}AmneziaWG UDP port${C_RESET}   [${C_CYAN}%s${C_RESET}]: " "$_default_wgport"
+  printf "  ${C_BOLD}AmneziaWG UDP port${C_RESET}   [${C_CYAN}%s${C_RESET}]: " "$_default_wgport"
   read -r _ans
   AWG_PORT="${_ans:-$_default_wgport}"
 
@@ -561,7 +643,7 @@ wizard() {
 
 # ─── Entrypoint ───────────────────────────────────────────────────────────────
 main() {
-  printf "\n${C_BOLD}AmneziaWG Panel Installer${C_RESET}\n"
+  banner
   require_root
   install_docker_if_missing
   wizard
@@ -582,10 +664,11 @@ main() {
   print_summary
 
   if frontend_enabled; then
-    log "Open: ${C_BOLD}http://$(detect_public_ip):$PANEL_HTTP_PORT${C_RESET}"
+    log_ok "Open in browser → ${C_BOLD}http://$(detect_public_ip):$PANEL_HTTP_PORT${C_RESET}"
   else
-    log "Done. Add this VPS to the central panel using Panel URL + ADMIN_TOKEN."
+    log_ok "Done. Add this VPS to the central panel using the URL and Token above."
   fi
+  printf "\n"
 }
 
 main "$@"
