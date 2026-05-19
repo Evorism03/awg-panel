@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Activity, ArrowDown, ArrowUp, ArrowUpDown, Check, CheckCircle2, ChevronDown, Clipboard, Clock3, CreditCard, Download, Home, Loader2, LogIn, LogOut, Pencil, Play, Plus, QrCode, RefreshCw, RotateCcw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
+import {Activity, ArrowDown, ArrowUp, ArrowUpDown, Check, CheckCircle2, ChevronDown, Clipboard, Clock3, CreditCard, Download, Home, Loader2, LogOut, Pencil, Play, Plus, QrCode, RefreshCw, RotateCcw, Server, ShoppingCart, Trash2, Upload, Users, UserCheck, UserX, X} from 'lucide-react';
 import QRCodeLib from 'qrcode';
 import './style.css';
 
@@ -65,7 +65,7 @@ const dict = {
     noDump:'Нет данных или awg недоступен из контейнера', wrongAuth:'Неверный логин или пароль.', details:'Подробнее', lastSeen:'Последнее подключение', never:'Никогда', download:'Скачать', copyConfig:'Скопировать конфиг', received:'Загрузка', sent:'Отдача', createdClients:'Созданных клиентов',
     contact:'Контакт', contactPlaceholder:'Email или телефон', clientId:'ID клиента', editContact:'Изменить контакт', saveContact:'Сохранить контакт',
     renew:'Продлить', renewClient:'Продлить подписку', renewConfirm:'Выберите срок продления', renewSuccess:'Подписка продлена',
-    portal:'Личный кабинет', portalLoginDesc:'Введите ваш Client ID и email для входа', portalIdLabel:'Client ID', portalEmailLabel:'Email', portalLoginBtn:'Войти', portalLogout:'Выйти', portalWrongCreds:'Неверный ID или email', portalActive:'Активна', portalExpired:'Истекла', portalExpires:'Действует до', portalGetConfig:'Скачать конфиг', portalShowQr:'Показать QR', portalConfigNotAvail:'Конфиг недоступен — обратитесь к администратору', portalCabinet:'Кабинет',
+    portal:'Личный кабинет', portalCabinet:'Кабинет', portalById:'По Client ID', portalByIdDesc:'Введите ваш Client ID для просмотра подписки', portalByIdNotFound:'Клиент с таким ID не найден', portalByEmail:'По Email', portalByEmailDesc:'Введите email для поиска всех ваших подписок', portalNotFound:'Подписки не найдены', portalSearch:'Найти', portalIdLabel:'Client ID', portalEmailLabel:'Email', portalActive:'Активна', portalExpired:'Истекла', portalExpires:'Действует до', portalGetConfig:'Скачать конфиг', portalShowQr:'Показать QR', portalConfigNotAvail:'Конфиг недоступен — обратитесь к администратору',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Текущая панель', deleteServer:'Удалить сервер?',
     sortBy:'Сортировка', sortNameAsc:'Имя A-Z', sortNameDesc:'Имя Z-A', sortCreatedDesc:'Дата создания, новые', sortCreatedAsc:'Дата создания, старые', sortLastSeenDesc:'Последнее подключение, новые', sortLastSeenAsc:'Последнее подключение, старые', selectAll:'Выбрать все', clearSelection:'Снять выбор', deleteSelected:'Удалить выбранные', selectedClients:'Выбрано клиентов', createdOnly:'Дата создания', lastConnection:'Последнее подключение', deleting:'Удаление', deleted:'Удалено', bulkActions:'Действия группы', bulkReady:'Можно удалять выбранных', editExpiry:'Изменить дату окончания', clearExpiry:'Без ограничений'
   },
@@ -96,7 +96,7 @@ const dict = {
     noDump:'No data or awg is unavailable from the container', wrongAuth:'Wrong login or password.', details:'Details', lastSeen:'Last connected', never:'Never', download:'Download', copyConfig:'Copy config', received:'Received', sent:'Sent', createdClients:'Created clients',
     contact:'Contact', contactPlaceholder:'Email or phone', clientId:'Client ID', editContact:'Edit contact', saveContact:'Save contact',
     renew:'Renew', renewClient:'Renew subscription', renewConfirm:'Select renewal term', renewSuccess:'Subscription renewed',
-    portal:'My Account', portalLoginDesc:'Enter your Client ID and email to sign in', portalIdLabel:'Client ID', portalEmailLabel:'Email', portalLoginBtn:'Sign in', portalLogout:'Sign out', portalWrongCreds:'Invalid ID or email', portalActive:'Active', portalExpired:'Expired', portalExpires:'Valid until', portalGetConfig:'Download config', portalShowQr:'Show QR', portalConfigNotAvail:'Config not available — contact your administrator', portalCabinet:'Account',
+    portal:'My Account', portalCabinet:'Account', portalById:'By Client ID', portalByIdDesc:'Enter your Client ID to view your subscription', portalByIdNotFound:'No client found with this ID', portalByEmail:'By Email', portalByEmailDesc:'Enter your email to find all your subscriptions', portalNotFound:'No subscriptions found', portalSearch:'Find', portalIdLabel:'Client ID', portalEmailLabel:'Email', portalActive:'Active', portalExpired:'Expired', portalExpires:'Valid until', portalGetConfig:'Download config', portalShowQr:'Show QR', portalConfigNotAvail:'Config not available — contact your administrator',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Current panel', deleteServer:'Delete server?',
     sortBy:'Sort', sortNameAsc:'Name A-Z', sortNameDesc:'Name Z-A', sortCreatedDesc:'Created newest', sortCreatedAsc:'Created oldest', sortLastSeenDesc:'Last connected newest', sortLastSeenAsc:'Last connected oldest', selectAll:'Select all', clearSelection:'Clear selection', deleteSelected:'Delete selected', selectedClients:'Selected clients', createdOnly:'Created date', lastConnection:'Last connected', deleting:'Deleting', deleted:'Deleted', bulkActions:'Group actions', bulkReady:'Ready to delete selected', editExpiry:'Edit expiry date', clearExpiry:'No limit'
   }
@@ -270,13 +270,15 @@ function App(){
   const [renewTerm,setRenewTerm]=useState('1m');
   const [processingOrderIds,setProcessingOrderIds]=useState(()=>new Set());
   const [portalId,setPortalId]=useState('');
+  const [portalIdClient,setPortalIdClient]=useState(undefined);
+  const [portalIdLoading,setPortalIdLoading]=useState(false);
+  const [portalIdConfig,setPortalIdConfig]=useState('');
+  const [portalIdQr,setPortalIdQr]=useState(false);
   const [portalEmail,setPortalEmail]=useState('');
-  const [portalVerified,setPortalVerified]=useState(null);
-  const [portalVerifyError,setPortalVerifyError]=useState('');
-  const [portalVerifyLoading,setPortalVerifyLoading]=useState(false);
-  const [portalConfig,setPortalConfig]=useState('');
-  const [portalConfigLoading,setPortalConfigLoading]=useState(false);
-  const [portalQr,setPortalQr]=useState(false);
+  const [portalEmailClients,setPortalEmailClients]=useState(null);
+  const [portalEmailLoading,setPortalEmailLoading]=useState(false);
+  const [portalEmailConfigs,setPortalEmailConfigs]=useState({});
+  const [portalEmailQr,setPortalEmailQr]=useState({});
   const [expandedClientKey,setExpandedClientKey]=useState('');
   const [expandedServerId,setExpandedServerId]=useState('');
   const [expandedOrderId,setExpandedOrderId]=useState('');
@@ -547,32 +549,49 @@ function App(){
     setTimeout(()=>setNotice(''),3000);
     await loadClients(serverId);
   };
-  const portalLogin=async()=>{
+  const portalLookupById=async()=>{
     const cid=portalId.trim();
-    const email=portalEmail.trim();
-    if(!cid||!email) return;
-    setPortalVerifyLoading(true);
-    setPortalVerifyError('');
+    if(!cid) return;
+    setPortalIdLoading(true);
+    setPortalIdClient(undefined);
+    setPortalIdConfig('');
+    setPortalIdQr(false);
     try{
-      const r=await fetch(`/api/portal/verify?client_id=${encodeURIComponent(cid)}&contact=${encodeURIComponent(email)}`);
-      if(!r.ok){ setPortalVerifyError(t('portalWrongCreds')); return; }
+      const r=await fetch(`/api/portal/lookup-by-id?client_id=${encodeURIComponent(cid)}`);
       const j=await r.json();
-      setPortalVerified(j.client);
-      setPortalConfig('');
-      setPortalQr(false);
-    }catch{ setPortalVerifyError(t('portalWrongCreds')); }
-    finally{ setPortalVerifyLoading(false); }
+      setPortalIdClient(j.client||null);
+    }catch{ setPortalIdClient(null); }
+    finally{ setPortalIdLoading(false); }
   };
-  const portalDownloadConfig=async()=>{
-    setPortalConfigLoading(true);
+  const portalGetConfigById=async()=>{
     try{
-      const r=await fetch(`/api/portal/config?contact=${encodeURIComponent(portalEmail.trim())}&client_id=${encodeURIComponent(portalId.trim())}`);
+      const r=await fetch(`/api/portal/config-by-id?client_id=${encodeURIComponent(portalId.trim())}`);
       if(!r.ok){ alert(t('portalConfigNotAvail')); return; }
-      setPortalConfig(await r.text());
+      setPortalIdConfig(await r.text());
     }catch{ alert(t('portalConfigNotAvail')); }
-    finally{ setPortalConfigLoading(false); }
   };
-  const portalLogout=()=>{ setPortalVerified(null); setPortalConfig(''); setPortalQr(false); setPortalVerifyError(''); };
+  const portalLookupByEmail=async()=>{
+    const email=portalEmail.trim();
+    if(!email) return;
+    setPortalEmailLoading(true);
+    setPortalEmailClients(null);
+    setPortalEmailConfigs({});
+    setPortalEmailQr({});
+    try{
+      const r=await fetch(`/api/portal/lookup?contact=${encodeURIComponent(email)}`);
+      const j=await r.json();
+      setPortalEmailClients(j.clients||[]);
+    }catch{ setPortalEmailClients([]); }
+    finally{ setPortalEmailLoading(false); }
+  };
+  const portalGetConfigByEmail=async(c)=>{
+    try{
+      const r=await fetch(`/api/portal/config?contact=${encodeURIComponent(portalEmail.trim())}&client_id=${encodeURIComponent(c.clientId)}`);
+      if(!r.ok){ alert(t('portalConfigNotAvail')); return; }
+      const text=await r.text();
+      setPortalEmailConfigs(prev=>({...prev,[c.clientId]:text}));
+    }catch{ alert(t('portalConfigNotAvail')); }
+  };
   const renameClient=async(client)=>{
     const nextName = editingClientName.trim();
     if(!nextName) return;
@@ -1215,47 +1234,68 @@ function App(){
       <button className="secondary public-admin-link" onClick={()=>navigate('/')}>{t('home')}</button>
     </section>
     <section className="public-layout portal-layout">
-      {!portalVerified ? (
-        <div className="card portal-search-card">
-          <div className="panel-head"><div><h2>{t('portal')}</h2><p>{t('portalLoginDesc')}</p></div></div>
-          <div className="client-form-grid">
-            <label>{t('portalIdLabel')}<input value={portalId} onChange={e=>setPortalId(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') portalLogin().catch(()=>{}); }} placeholder="a3f2b1c4" autoComplete="username" /></label>
-            <label>{t('portalEmailLabel')}<input type="email" value={portalEmail} onChange={e=>setPortalEmail(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') portalLogin().catch(()=>{}); }} placeholder="mail@example.com" autoComplete="email" /></label>
-          </div>
-          {portalVerifyError && <p className="portal-no-config" style={{color:'var(--danger)'}}>{portalVerifyError}</p>}
-          <button onClick={()=>portalLogin().catch(()=>{})} disabled={portalVerifyLoading||!portalId.trim()||!portalEmail.trim()}>
-            {portalVerifyLoading?<Loader2 size={16} className="spin-icon"/>:<LogIn size={16}/>}{t('portalLoginBtn')}
-          </button>
+
+      <div className="card portal-search-card">
+        <div className="panel-head"><div><h2>{t('portalById')}</h2><p>{t('portalByIdDesc')}</p></div></div>
+        <div className="client-form-grid">
+          <label>{t('portalIdLabel')}<input value={portalId} onChange={e=>{setPortalId(e.target.value);setPortalIdClient(undefined);setPortalIdConfig('');}} onKeyDown={e=>{ if(e.key==='Enter') portalLookupById().catch(()=>{}); }} placeholder="a3f2b1c4" /></label>
         </div>
-      ) : (
-        <div className="card portal-client-card">
-          <div className="panel-head">
-            <div>
-              <h2>{portalVerified.name||'—'}</h2>
-              <p><span className={`badge ${portalVerified.status==='active'?'ok':'expired'}`}>{portalVerified.status==='active'?t('portalActive'):t('portalExpired')}</span></p>
-            </div>
-            <button className="secondary" onClick={portalLogout}><LogOut size={16}/>{t('portalLogout')}</button>
+        <button onClick={()=>portalLookupById().catch(()=>{})} disabled={portalIdLoading||!portalId.trim()}>
+          {portalIdLoading?<Loader2 size={16} className="spin-icon"/>:<CheckCircle2 size={16}/>}{t('portalSearch')}
+        </button>
+        {portalIdClient===null && <p className="portal-no-config">{t('portalByIdNotFound')}</p>}
+        {portalIdClient && <div className="card portal-client-card" style={{marginTop:'12px'}}>
+          <div className="portal-client-header">
+            <strong>{portalIdClient.name||'—'}</strong>
+            <span className={`badge ${portalIdClient.status==='active'?'ok':'expired'}`}>{portalIdClient.status==='active'?t('portalActive'):t('portalExpired')}</span>
           </div>
-          {portalVerified.expiresAt && <div className="portal-client-meta"><span>{t('portalExpires')}:</span> <strong>{portalVerified.expiresAt}</strong></div>}
-          <div className="portal-client-meta"><span>{t('clientId')}:</span> <code>{portalVerified.clientId}</code></div>
-          {portalVerified.hasConfig && !portalConfig && (
-            <div className="portal-config-actions" style={{marginTop:'4px'}}>
-              <button onClick={()=>portalDownloadConfig().catch(()=>{})} disabled={portalConfigLoading}>
-                {portalConfigLoading?<Loader2 size={16} className="spin-icon"/>:<Download size={16}/>}{t('portalGetConfig')}
-              </button>
-            </div>
-          )}
-          {portalConfig && <>
+          {portalIdClient.expiresAt && <div className="portal-client-meta"><span>{t('portalExpires')}:</span> <strong>{portalIdClient.expiresAt}</strong></div>}
+          {portalIdClient.hasConfig && !portalIdConfig && <div className="portal-config-actions"><button onClick={()=>portalGetConfigById().catch(()=>{})}><Download size={16}/>{t('portalGetConfig')}</button></div>}
+          {portalIdConfig && <>
             <div className="portal-config-actions">
-              <button className="secondary" onClick={()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([portalConfig],{type:'text/plain'})); a.download=`${portalVerified.name||'client'}.conf`; a.click(); }}><Download size={16}/>{t('download')}</button>
-              <button className="secondary" onClick={()=>navigator.clipboard.writeText(portalConfig).catch(()=>{})}><Clipboard size={16}/>{t('copyConfig')}</button>
-              <button className="secondary" onClick={()=>setPortalQr(v=>!v)}><QrCode size={16}/>{t('portalShowQr')}</button>
+              <button className="secondary" onClick={()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([portalIdConfig],{type:'text/plain'})); a.download=`${portalIdClient.name||'client'}.conf`; a.click(); }}><Download size={16}/>{t('download')}</button>
+              <button className="secondary" onClick={()=>navigator.clipboard.writeText(portalIdConfig).catch(()=>{})}><Clipboard size={16}/>{t('copyConfig')}</button>
+              <button className="secondary" onClick={()=>setPortalIdQr(v=>!v)}><QrCode size={16}/>{t('portalShowQr')}</button>
             </div>
-            {portalQr && <div className="portal-qr"><QRCanvas text={portalConfig} size={240}/></div>}
+            {portalIdQr && <div className="portal-qr"><QRCanvas text={portalIdConfig} size={240}/></div>}
           </>}
-          {!portalVerified.hasConfig && <p className="portal-no-config">{t('portalConfigNotAvail')}</p>}
+          {!portalIdClient.hasConfig && <p className="portal-no-config">{t('portalConfigNotAvail')}</p>}
+        </div>}
+      </div>
+
+      <div className="card portal-search-card">
+        <div className="panel-head"><div><h2>{t('portalByEmail')}</h2><p>{t('portalByEmailDesc')}</p></div></div>
+        <div className="client-form-grid">
+          <label>{t('portalEmailLabel')}<input type="email" value={portalEmail} onChange={e=>{setPortalEmail(e.target.value);setPortalEmailClients(null);}} onKeyDown={e=>{ if(e.key==='Enter') portalLookupByEmail().catch(()=>{}); }} placeholder="mail@example.com" /></label>
         </div>
-      )}
+        <button onClick={()=>portalLookupByEmail().catch(()=>{})} disabled={portalEmailLoading||!portalEmail.trim()}>
+          {portalEmailLoading?<Loader2 size={16} className="spin-icon"/>:<CheckCircle2 size={16}/>}{t('portalSearch')}
+        </button>
+        {portalEmailClients!==null && portalEmailClients.length===0 && <p className="portal-no-config">{t('portalNotFound')}</p>}
+        {portalEmailClients && portalEmailClients.map(c=>{
+          const cfg=portalEmailConfigs[c.clientId];
+          const qr=portalEmailQr[c.clientId];
+          return <div key={c.clientId} className="card portal-client-card" style={{marginTop:'12px'}}>
+            <div className="portal-client-header">
+              <strong>{c.name||'—'}</strong>
+              <span className={`badge ${c.status==='active'?'ok':'expired'}`}>{c.status==='active'?t('portalActive'):t('portalExpired')}</span>
+            </div>
+            {c.expiresAt && <div className="portal-client-meta"><span>{t('portalExpires')}:</span> <strong>{c.expiresAt}</strong></div>}
+            <div className="portal-client-meta"><span>{t('clientId')}:</span> <code>{c.clientId}</code></div>
+            {c.hasConfig && !cfg && <div className="portal-config-actions"><button onClick={()=>portalGetConfigByEmail(c).catch(()=>{})}><Download size={16}/>{t('portalGetConfig')}</button></div>}
+            {cfg && <>
+              <div className="portal-config-actions">
+                <button className="secondary" onClick={()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([cfg],{type:'text/plain'})); a.download=`${c.name||'client'}.conf`; a.click(); }}><Download size={16}/>{t('download')}</button>
+                <button className="secondary" onClick={()=>navigator.clipboard.writeText(cfg).catch(()=>{})}><Clipboard size={16}/>{t('copyConfig')}</button>
+                <button className="secondary" onClick={()=>setPortalEmailQr(prev=>({...prev,[c.clientId]:!prev[c.clientId]}))}><QrCode size={16}/>{t('portalShowQr')}</button>
+              </div>
+              {qr && <div className="portal-qr"><QRCanvas text={cfg} size={240}/></div>}
+            </>}
+            {!c.hasConfig && <p className="portal-no-config">{t('portalConfigNotAvail')}</p>}
+          </div>;
+        })}
+      </div>
+
     </section>
   </main>;
 
