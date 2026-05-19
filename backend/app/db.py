@@ -157,6 +157,20 @@ def migrate_from_json(
         conn.close()
 
 
+def prune_orphan_meta(active_keys: set, expired_keys: set) -> int:
+    """Remove clients_meta rows whose peer is neither active in AWG config nor expired."""
+    conn = _connect()
+    try:
+        rows = conn.execute("SELECT public_key FROM clients_meta").fetchall()
+        orphans = [r[0] for r in rows if r[0] not in active_keys and r[0] not in expired_keys]
+        for pk in orphans:
+            conn.execute("DELETE FROM clients_meta WHERE public_key = ?", (pk,))
+        conn.commit()
+        return len(orphans)
+    finally:
+        conn.close()
+
+
 # ─── clients_meta ──────────────────────────────────────────────────────────────
 
 def load_clients_meta() -> dict:

@@ -80,6 +80,13 @@ async def lifespan(_app):
         enforce_expired_clients()
     except Exception:
         pass
+    # Remove meta entries whose peer is gone from AWG config and not expired (stale after AWG reset)
+    try:
+        active = {p.get("PublicKey", "").strip() for p in parse_peers(read_cfg())}
+        expired_keys = set(load_expired_clients().keys())
+        _db.prune_orphan_meta(active, expired_keys)
+    except Exception:
+        pass
     task = asyncio.create_task(_sse_monitor())
     expiry_task = asyncio.create_task(_expiry_enforcer())
     yield
