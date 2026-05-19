@@ -66,6 +66,9 @@ const dict = {
     contact:'Контакт', contactPlaceholder:'Email или телефон', clientId:'ID клиента', editContact:'Изменить контакт', saveContact:'Сохранить контакт',
     renew:'Продлить', renewClient:'Продлить подписку', renewConfirm:'Выберите срок продления', renewSuccess:'Подписка продлена',
     renewByIdTitle:'Продление подписки', renewByIdDesc:'Введите Client ID чтобы продлить подписку.', renewByIdAction:'Продлить', renewByIdSuccess:'Продлена до', renewByIdPending:'Заявка принята, ожидает обработки', renewByIdNotFound:'Клиент не найден',
+    statusPage:'Статус системы', statusOnline:'Все системы работают', statusDegraded:'Частичные неполадки', statusOffline:'Система недоступна', statusLastCheck:'Проверено', statusLatency:'мс', statusServer:'Сервер', statusKindLocal:'Главная панель', statusKindAgent:'Агент',
+    deviceAdd:'Добавить устройство', deviceAddDesc:'Создать ещё один конфиг для другого устройства с тем же сроком.', deviceName:'Название устройства', deviceAdded:'Устройство добавлено', deviceAddError:'Ошибка — проверьте email', deviceLimit:'Достигнут лимит устройств', deviceNamePlaceholder:'iPhone / Ноутбук',
+    renewInCabinet:'Продлить подписку', renewTermLabel:'Срок продления',
     portal:'Личный кабинет', portalCabinet:'Кабинет', portalById:'По Client ID', portalByIdDesc:'Введите ваш Client ID для просмотра подписки', portalByIdNotFound:'Клиент с таким ID не найден', portalByEmail:'По Email', portalByEmailDesc:'Введите email для поиска всех ваших подписок', portalNotFound:'Подписки не найдены', portalSearch:'Найти', portalIdLabel:'Client ID', portalEmailLabel:'Email', portalActive:'Активна', portalExpired:'Истекла', portalExpires:'Действует до', portalGetConfig:'Скачать конфиг', portalShowQr:'Показать QR', portalConfigNotAvail:'Конфиг недоступен — обратитесь к администратору',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Текущая панель', deleteServer:'Удалить сервер?',
     sortBy:'Сортировка', sortNameAsc:'Имя A-Z', sortNameDesc:'Имя Z-A', sortCreatedDesc:'Дата создания, новые', sortCreatedAsc:'Дата создания, старые', sortLastSeenDesc:'Последнее подключение, новые', sortLastSeenAsc:'Последнее подключение, старые', selectAll:'Выбрать все', clearSelection:'Снять выбор', deleteSelected:'Удалить выбранные', selectedClients:'Выбрано клиентов', createdOnly:'Дата создания', lastConnection:'Последнее подключение', deleting:'Удаление', deleted:'Удалено', bulkActions:'Действия группы', bulkReady:'Можно удалять выбранных', editExpiry:'Изменить дату окончания', clearExpiry:'Без ограничений'
@@ -98,6 +101,9 @@ const dict = {
     contact:'Contact', contactPlaceholder:'Email or phone', clientId:'Client ID', editContact:'Edit contact', saveContact:'Save contact',
     renew:'Renew', renewClient:'Renew subscription', renewConfirm:'Select renewal term', renewSuccess:'Subscription renewed',
     renewByIdTitle:'Subscription renewal', renewByIdDesc:'Enter your Client ID to renew your subscription.', renewByIdAction:'Renew', renewByIdSuccess:'Renewed until', renewByIdPending:'Request submitted, awaiting processing', renewByIdNotFound:'Client not found',
+    statusPage:'System status', statusOnline:'All systems operational', statusDegraded:'Partial degradation', statusOffline:'System unavailable', statusLastCheck:'Checked', statusLatency:'ms', statusServer:'Server', statusKindLocal:'Main panel', statusKindAgent:'Agent',
+    deviceAdd:'Add device', deviceAddDesc:'Create another config for a different device with the same expiry.', deviceName:'Device name', deviceAdded:'Device added', deviceAddError:'Error — check email', deviceLimit:'Device limit reached', deviceNamePlaceholder:'iPhone / Laptop',
+    renewInCabinet:'Renew subscription', renewTermLabel:'Renewal term',
     portal:'My Account', portalCabinet:'Account', portalById:'By Client ID', portalByIdDesc:'Enter your Client ID to view your subscription', portalByIdNotFound:'No client found with this ID', portalByEmail:'By Email', portalByEmailDesc:'Enter your email to find all your subscriptions', portalNotFound:'No subscriptions found', portalSearch:'Find', portalIdLabel:'Client ID', portalEmailLabel:'Email', portalActive:'Active', portalExpired:'Expired', portalExpires:'Valid until', portalGetConfig:'Download config', portalShowQr:'Show QR', portalConfigNotAvail:'Config not available — contact your administrator',
     loginPlaceholder:'admin', passwordPlaceholder:'admin123', clientNamePlaceholder:'iPhone Evgeny', importNamePlaceholder:'Android Evgeny', serverNamePlaceholder:'VPS NL', panelUrlPlaceholder:'http://45.15.152.113:8080', currentPanel:'Current panel', deleteServer:'Delete server?',
     sortBy:'Sort', sortNameAsc:'Name A-Z', sortNameDesc:'Name Z-A', sortCreatedDesc:'Created newest', sortCreatedAsc:'Created oldest', sortLastSeenDesc:'Last connected newest', sortLastSeenAsc:'Last connected oldest', selectAll:'Select all', clearSelection:'Clear selection', deleteSelected:'Delete selected', selectedClients:'Selected clients', createdOnly:'Created date', lastConnection:'Last connected', deleting:'Deleting', deleted:'Deleted', bulkActions:'Group actions', bulkReady:'Ready to delete selected', editExpiry:'Edit expiry date', clearExpiry:'No limit'
@@ -209,6 +215,7 @@ function App(){
   const [pathname,setPathname]=useState(()=>window.location.pathname || '/');
   const isAdminRoute = pathname.startsWith('/admin');
   const isPortalRoute = pathname.startsWith('/portal');
+  const isStatusRoute = pathname.startsWith('/status');
   const navigate=(to)=>{
     if ((window.location.pathname || '/') === to) return;
     window.history.pushState({}, '', to);
@@ -284,6 +291,16 @@ function App(){
   const [portalRenewId,setPortalRenewId]=useState('');
   const [portalRenewResult,setPortalRenewResult]=useState(null);
   const [portalRenewLoading,setPortalRenewLoading]=useState(false);
+  const [portalRenewTerm,setPortalRenewTerm]=useState('1m');
+  const [portalIdRenewResult,setPortalIdRenewResult]=useState(null);
+  const [portalIdRenewLoading,setPortalIdRenewLoading]=useState(false);
+  const [portalEmailRenewResults,setPortalEmailRenewResults]=useState({});
+  const [portalDeviceEmail,setPortalDeviceEmail]=useState('');
+  const [portalDeviceName,setPortalDeviceName]=useState('');
+  const [portalDeviceResult,setPortalDeviceResult]=useState(null);
+  const [portalDeviceLoading,setPortalDeviceLoading]=useState(false);
+  const [statusData,setStatusData]=useState(null);
+  const [statusLoading,setStatusLoading]=useState(false);
   const [expandedClientKey,setExpandedClientKey]=useState('');
   const [expandedServerId,setExpandedServerId]=useState('');
   const [expandedOrderId,setExpandedOrderId]=useState('');
@@ -596,6 +613,41 @@ function App(){
       const text=await r.text();
       setPortalEmailConfigs(prev=>({...prev,[c.clientId]:text}));
     }catch{ alert(t('portalConfigNotAvail')); }
+  };
+  const cabinetRenew=async(cid,setResult)=>{
+    setResult({loading:true});
+    try{
+      const r=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:cid,term:portalRenewTerm})});
+      const j=await r.json();
+      if(!r.ok){ setResult({error:j.detail||t('renewByIdNotFound')}); return; }
+      const ord=j.order||{};
+      if(ord.status==='issued') setResult({success:true,expiresAt:ord.expiresAt||''});
+      else setResult({pending:true});
+    }catch{ setResult({error:t('renewByIdNotFound')}); }
+  };
+  const portalCabinetRenewById=()=>cabinetRenew(portalId.trim(), setPortalIdRenewResult);
+  const portalCabinetRenewByEmail=(cid)=>cabinetRenew(cid, res=>setPortalEmailRenewResults(p=>({...p,[cid]:res})));
+  const portalAddDevice=async()=>{
+    const cid=portalId.trim();
+    const contact=portalDeviceEmail.trim();
+    if(!cid||!contact) return;
+    setPortalDeviceLoading(true);
+    setPortalDeviceResult(null);
+    try{
+      const r=await fetch('/api/portal/add-device',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:cid,contact,device_name:portalDeviceName.trim()})});
+      const j=await r.json();
+      if(!r.ok){ setPortalDeviceResult({error:j.detail||t('deviceAddError')}); return; }
+      setPortalDeviceResult({success:true,config:j.config,clientId:j.clientId});
+    }catch{ setPortalDeviceResult({error:t('deviceAddError')}); }
+    finally{ setPortalDeviceLoading(false); }
+  };
+  const loadStatus=async()=>{
+    setStatusLoading(true);
+    try{
+      const r=await fetch('/api/status');
+      if(r.ok) setStatusData(await r.json());
+    }catch{}
+    finally{ setStatusLoading(false); }
   };
   const portalRenewById=async()=>{
     const cid=portalRenewId.trim();

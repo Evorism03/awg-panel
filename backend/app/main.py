@@ -1,4 +1,4 @@
-from fastapi import Cookie, FastAPI, HTTPException, Header, Response
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Header, Request, Response
 from fastapi import Query
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import StreamingResponse
@@ -7,7 +7,7 @@ import asyncio, base64, configparser, csv, hashlib, io, ipaddress, json, os, re,
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from threading import RLock
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import urllib.request
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
@@ -105,6 +105,35 @@ app = FastAPI(title="AmneziaWG Admin", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=512)
 data_lock = RLock()
 
+# ─── Rate limiting (in-memory, per IP) ────────────────────────────────────────
+_rl_lock = RLock()
+_rl_store: dict[str, list[float]] = {}
+
+def _rate_check(key: str, limit: int, window: int = 60) -> bool:
+    now = time.time()
+    with _rl_lock:
+        times = [t for t in _rl_store.get(key, []) if now - t < window]
+        if len(times) >= limit:
+            return False
+        times.append(now)
+        _rl_store[key] = times
+        return True
+
+def _portal_rl(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    if not _rate_check(f"p:{ip}", 30):
+        raise HTTPException(429, "Too many requests — please wait a minute.")
+
+def _config_rl(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    if not _rate_check(f"c:{ip}", 10):
+        raise HTTPException(429, "Too many requests — please wait a minute.")
+
+def _order_rl(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    if not _rate_check(f"o:{ip}", 10):
+        raise HTTPException(429, "Too many requests — please wait a minute.")
+
 class ClientCreate(BaseModel):
     name: str
     term: str = "1m"
@@ -146,6 +175,11 @@ class OrderUpdate(BaseModel):
 
 class ClientRenew(BaseModel):
     term: str = "1m"
+
+class PortalAddDevice(BaseModel):
+    client_id: str
+    contact: str
+    device_name: str = ""
 
 class ClientExpiry(BaseModel):
     expiresAt: str | None = None
@@ -458,7 +492,7 @@ def list_servers(include_local: bool = True) -> list[dict]:
     return result
 
 
-def create_client_local(name: str, term: str, contact: str) -> dict:
+def create_client_local(name: str, term: str, contact: str, expires_at: str | None = None) -> dict:
     text = read_cfg()
     interface = parse_interface(text)
     peers = parse_peers(text)
@@ -469,7 +503,8 @@ def create_client_local(name: str, term: str, contact: str) -> dict:
     save_expired_clients(expired)
     psk = awg(["genpsk"])
     ip = next_ip(interface.get("Address", "10.8.1.1/24"), peers)
-    expires_at = expiration_date(term)
+    if expires_at is None:
+        expires_at = expiration_date(term)
     expires_line = f"# Expires: {expires_at}\n" if expires_at else ""
     client_id = secrets.token_hex(4)
     created_at = date.today().isoformat()
@@ -1126,6 +1161,46 @@ def health():
         "mock": MOCK_AWG,
     }
 
+
+@app.get("/api/status")
+def public_status():
+    """Public endpoint: health of this server and all registered agents."""
+    results: list[dict] = []
+    local_ok = True
+    try:
+        parse_peers(read_cfg())
+    except Exception:
+        local_ok = False
+    results.append({
+        "id": LOCAL_SERVER_ID,
+        "name": LOCAL_SERVER_NAME,
+        "kind": "local",
+        "status": "online" if local_ok else "degraded",
+    })
+    for s in _db.load_servers():
+        t0 = time.time()
+        try:
+            code, _ = _portal_proxy_get(s["baseUrl"], "/api/health")
+            latency = int((time.time() - t0) * 1000)
+            results.append({
+                "id": s["id"],
+                "name": s["name"],
+                "kind": "agent",
+                "status": "online" if code == 200 else "degraded",
+                "latencyMs": latency,
+            })
+        except Exception:
+            results.append({"id": s["id"], "name": s["name"], "kind": "agent", "status": "offline"})
+    all_ok = all(r["status"] == "online" for r in results)
+    any_offline = any(r["status"] == "offline" for r in results)
+    overall = "online" if all_ok else ("offline" if any_offline else "degraded")
+    return {
+        "overall": overall,
+        "servers": results,
+        "checkedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
 @app.post("/api/login")
 def login(body: LoginRequest, response: Response):
     password = ADMIN_PASSWORD or ADMIN_TOKEN
@@ -1265,7 +1340,7 @@ def orders(authorization: str | None = Header(None), awg_panel_session: str | No
 
 
 @app.post("/api/orders")
-def create_order(body: OrderCreate):
+def create_order(body: OrderCreate, _rl: None = Depends(_order_rl)):
     with data_lock:
         client_id = body.client_id.strip()
         login = body.login.strip()
@@ -1811,7 +1886,7 @@ def _remote_client_contact(server: dict, cid: str) -> str | None:
 
 
 @app.get("/api/portal/lookup-by-id")
-def portal_lookup_by_id(client_id: str = Query(...)):
+def portal_lookup_by_id(client_id: str = Query(...), _rl: None = Depends(_portal_rl)):
     cid = client_id.strip()
     if not cid:
         raise HTTPException(400, "Client ID is required")
@@ -1841,7 +1916,7 @@ def portal_lookup_by_id(client_id: str = Query(...)):
 
 
 @app.get("/api/portal/config-by-id")
-def portal_config_by_id(client_id: str = Query(...)):
+def portal_config_by_id(client_id: str = Query(...), _rl: None = Depends(_config_rl)):
     cid = client_id.strip()
     if not cid:
         raise HTTPException(400, "Client ID is required")
@@ -1861,7 +1936,7 @@ def portal_config_by_id(client_id: str = Query(...)):
 
 
 @app.get("/api/portal/verify")
-def portal_verify(client_id: str = Query(...), contact: str = Query(...)):
+def portal_verify(client_id: str = Query(...), contact: str = Query(...), _rl: None = Depends(_portal_rl)):
     cid = client_id.strip()
     contact_norm = contact.strip().lower()
     if not cid or not contact_norm:
@@ -1913,7 +1988,7 @@ def portal_verify(client_id: str = Query(...), contact: str = Query(...)):
 
 
 @app.get("/api/portal/lookup")
-def portal_lookup(contact: str = Query(...)):
+def portal_lookup(contact: str = Query(...), _rl: None = Depends(_portal_rl)):
     contact_norm = contact.strip().lower()
     if not contact_norm:
         raise HTTPException(400, "Contact is required")
@@ -1944,7 +2019,7 @@ def portal_lookup(contact: str = Query(...)):
 
 
 @app.get("/api/portal/config")
-def portal_config_download(contact: str = Query(...), client_id: str = Query(...)):
+def portal_config_download(contact: str = Query(...), client_id: str = Query(...), _rl: None = Depends(_config_rl)):
     contact_norm = contact.strip().lower()
     client_id = client_id.strip()
     if not contact_norm or not client_id:
@@ -1967,6 +2042,40 @@ def portal_config_download(contact: str = Query(...), client_id: str = Query(...
         if status == 200 and raw:
             return Response(content=raw, media_type="text/plain; charset=utf-8")
     raise HTTPException(404, "Client not found")
+
+
+@app.post("/api/portal/add-device")
+def portal_add_device(body: PortalAddDevice, _rl: None = Depends(_order_rl)):
+    """Public: add an extra WireGuard device to an existing account (requires client_id + contact verification)."""
+    cid = body.client_id.strip()
+    contact_norm = body.contact.strip().lower()
+    device_name = body.device_name.strip()
+    if not cid or not contact_norm:
+        raise HTTPException(400, "client_id and contact required")
+    meta = load_clients_meta()
+    pk = next((k for k, m in meta.items() if m.get("id", "") == cid), None)
+    if pk is None:
+        raise HTTPException(401, "Invalid credentials")
+    stored = meta[pk].get("contact", "").strip().lower()
+    if not stored or stored != contact_norm:
+        raise HTTPException(401, "Invalid credentials")
+    device_count = sum(1 for m in meta.values() if m.get("contact", "").strip().lower() == contact_norm)
+    if device_count >= MAX_DEVICES_PER_ACCOUNT:
+        raise HTTPException(429, f"Maximum {MAX_DEVICES_PER_ACCOUNT} devices per account reached")
+    parent_expiry: str = ""
+    with data_lock:
+        for peer in parse_peers(read_cfg()):
+            if peer.get("PublicKey", "").strip() == pk:
+                parent_expiry = peer.get("expiresAt", "") or ""
+                break
+        if not parent_expiry:
+            exp_clients = load_expired_clients()
+            parent_expiry = exp_clients.get(pk, {}).get("expiresAt", "") or ""
+    if not device_name:
+        device_name = f"Device {device_count + 1}"
+    result = create_client_local(device_name, "admin", contact_norm, expires_at=parent_expiry)
+    _db.write_audit_log("portal.add_device", "client", result["publicKey"], {"accountId": cid, "clientId": result["clientId"]})
+    return {"ok": True, "clientId": result["clientId"], "config": result["config"], "expiresAt": result["expiresAt"]}
 
 
 # ─── CSV export ───────────────────────────────────────────────────────────────
