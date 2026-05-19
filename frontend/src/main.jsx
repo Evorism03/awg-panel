@@ -526,7 +526,7 @@ function App(){
     const key=clientRowKey(client);
     setClientPending(key,true);
     try{
-      await api(`/api/clients/${encodeURIComponent(client.PublicKey)}/renew?server_id=${encodeURIComponent(serverId)}`,{method:'POST',body:JSON.stringify({term:renewTerm})});
+      await api(`/api/clients/renew?public_key=${encodeURIComponent(client.PublicKey)}&server_id=${encodeURIComponent(serverId)}`,{method:'POST',body:JSON.stringify({term:renewTerm})});
       setRenewingClientKey('');
       setNotice(t('renewSuccess'));
       setTimeout(()=>setNotice(''),2500);

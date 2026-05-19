@@ -137,6 +137,8 @@ copy_project() {
     --exclude='.env' \
     --exclude='qr-renderer' \
     --exclude='backend/.venv' \
+    --exclude='backend/tests' \
+    --exclude='backend/.pytest_cache' \
     --exclude='frontend/node_modules' \
     --exclude='frontend/dist' \
     --exclude='backend/__pycache__' \
@@ -256,6 +258,11 @@ update_existing_env() {
   awg_iface="${AWG_INTERFACE:-$(interface_from_config_path "$awg_config_path")}"
   set_env_key "$env_path" "AWG_INTERFACE" "$awg_iface"
 
+  # Add new variables that may be missing in older installations
+  ensure_env_key "$env_path" "DB_PATH" "/data/panel.db"
+  ensure_env_key "$env_path" "WEBHOOK_URL" ""
+  ensure_env_key "$env_path" "WEBHOOK_SECRET" ""
+
   # Always refresh SERVER_ENDPOINT with the current public IP.
   # On reinstall the old .env may have a stale IP from a previous server —
   # redetect unconditionally so the endpoint stays correct.
@@ -316,6 +323,7 @@ AWG_DOCKER_CONTAINER=$awg_container
 AWG_CONFIG_PATH=${AWG_CONFIG_PATH:-$awg_config_path}
 AWG_CONTAINER_CONFIG_PATH=$awg_config_path
 CLIENTS_DIR=/data/clients
+DB_PATH=/data/panel.db
 SERVER_ENDPOINT=${SERVER_ENDPOINT:-$server_ip:$awg_port}
 CLIENT_DNS=${CLIENT_DNS:-1.1.1.1}
 CLIENT_ALLOWED_IPS=${CLIENT_ALLOWED_IPS:-0.0.0.0/0, ::/0}
@@ -326,6 +334,9 @@ PANEL_HTTP_PORT=$PANEL_HTTP_PORT
 BACKEND_BIND=$BACKEND_BIND
 BACKEND_PORT=$BACKEND_PORT
 INSTALL_MODE=$INSTALL_MODE
+# Webhooks — POST на этот URL при создании/удалении/истечении клиентов и заказов
+WEBHOOK_URL=${WEBHOOK_URL:-}
+WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
 EOF_ENV
   chmod 600 "$env_path"
   log "Config written: $env_path"
@@ -463,7 +474,15 @@ print_summary() {
   printf "${C_CYAN}${C_BOLD}%s${C_RESET}\n\n" "$sep"
 
   printf "${C_DIM}To add this VPS to another panel: Panel URL + ADMIN_TOKEN.${C_RESET}\n"
-  printf "${C_DIM}Installer did NOT modify system nginx, ports 80/443, or existing sites.${C_RESET}\n\n"
+  printf "${C_DIM}Installer did NOT modify system nginx, ports 80/443, or existing sites.${C_RESET}\n"
+  printf "${C_DIM}Audit log: GET /api/audit-log  |  CSV export: GET /api/clients/export.csv${C_RESET}\n"
+  local webhook_url; webhook_url="$(env_value WEBHOOK_URL)"
+  if [ -n "$webhook_url" ]; then
+    printf "${C_DIM}Webhooks enabled → %s${C_RESET}\n" "$webhook_url"
+  else
+    printf "${C_DIM}Webhooks: set WEBHOOK_URL in .env to receive event notifications.${C_RESET}\n"
+  fi
+  printf "\n"
 }
 
 # ─── Interactive wizard ───────────────────────────────────────────────────────

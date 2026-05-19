@@ -3,7 +3,7 @@ from fastapi import Query
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-import asyncio, base64, configparser, hashlib, ipaddress, json, os, re, secrets, shutil, subprocess, time
+import asyncio, base64, configparser, csv, hashlib, io, ipaddress, json, os, re, secrets, shutil, subprocess, time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from threading import RLock
@@ -12,6 +12,8 @@ import urllib.request
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
 from .config import *
+from . import db as _db
+from . import webhook as _wh
 
 _sse_queues: list = []
 
@@ -65,6 +67,14 @@ async def _expiry_enforcer():
 
 @asynccontextmanager
 async def lifespan(_app):
+    _db.init_db(DB_PATH)
+    _db.migrate_from_json(
+        expired_path=f"{CLIENTS_DIR}/expired-clients.json",
+        meta_path=f"{CLIENTS_DIR}/clients-meta.json",
+        servers_json_path=SERVERS_PATH,
+        orders_json_path=ORDERS_PATH,
+        local_server_json_path=LOCAL_SERVER_PATH,
+    )
     # Enforce expiry once at startup to catch clients that expired while the server was down
     try:
         enforce_expired_clients()
@@ -303,52 +313,13 @@ def parse_peers(text: str) -> list[dict]:
 
 def expired_clients_path() -> str:
     os.makedirs(CLIENTS_DIR, exist_ok=True)
-    return f"{CLIENTS_DIR}/expired-clients.json"
+    return DB_PATH
 
 
-def load_expired_clients() -> dict:
-    path = expired_clients_path()
-    if not os.path.exists(path):
-        return {}
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def save_expired_clients(clients: dict):
-    with open(expired_clients_path(), "w", encoding="utf-8") as f:
-        json.dump(clients, f, ensure_ascii=False, indent=2, sort_keys=True)
-
-
-_CLIENTS_META_PATH = f"{CLIENTS_DIR}/clients-meta.json"
-_meta_cache: dict = {}
-_meta_cache_mtime: float = -1.0
-
-
-def load_clients_meta() -> dict:
-    global _meta_cache, _meta_cache_mtime
-    try:
-        mtime = os.path.getmtime(_CLIENTS_META_PATH)
-        if mtime == _meta_cache_mtime:
-            return _meta_cache
-        with open(_CLIENTS_META_PATH, "r", encoding="utf-8") as f:
-            _meta_cache = json.load(f)
-        _meta_cache_mtime = mtime
-    except FileNotFoundError:
-        _meta_cache = {}
-        _meta_cache_mtime = -1.0
-    return _meta_cache
-
-
-def save_clients_meta(meta: dict):
-    global _meta_cache, _meta_cache_mtime
-    os.makedirs(CLIENTS_DIR, exist_ok=True)
-    with open(_CLIENTS_META_PATH, "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2, sort_keys=True)
-    _meta_cache = meta
-    try:
-        _meta_cache_mtime = os.path.getmtime(_CLIENTS_META_PATH)
-    except Exception:
-        pass
+load_expired_clients = _db.load_expired_clients
+save_expired_clients = _db.save_expired_clients
+load_clients_meta = _db.load_clients_meta
+save_clients_meta = _db.save_clients_meta
 
 
 def attach_meta_to_peers(peers: list[dict]) -> list[dict]:
@@ -391,65 +362,12 @@ def attach_meta_to_peers(peers: list[dict]) -> list[dict]:
     return peers
 
 
-def servers_path() -> str:
-    os.makedirs(os.path.dirname(SERVERS_PATH), exist_ok=True)
-    return SERVERS_PATH
-
-
-def load_servers() -> list[dict]:
-    path = servers_path()
-    if not os.path.exists(path):
-        return []
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if isinstance(data, dict):
-        data = data.get("servers", [])
-    if not isinstance(data, list):
-        return []
-    return [server for server in data if isinstance(server, dict)]
-
-
-def save_servers(servers: list[dict]):
-    with open(servers_path(), "w", encoding="utf-8") as f:
-        json.dump(servers, f, ensure_ascii=False, indent=2, sort_keys=True)
-
-
-def load_local_server_settings() -> dict:
-    os.makedirs(os.path.dirname(LOCAL_SERVER_PATH), exist_ok=True)
-    if not os.path.exists(LOCAL_SERVER_PATH):
-        return {}
-    with open(LOCAL_SERVER_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return data if isinstance(data, dict) else {}
-
-
-def save_local_server_settings(settings: dict):
-    os.makedirs(os.path.dirname(LOCAL_SERVER_PATH), exist_ok=True)
-    with open(LOCAL_SERVER_PATH, "w", encoding="utf-8") as f:
-        json.dump(settings, f, ensure_ascii=False, indent=2, sort_keys=True)
-
-
-def orders_path() -> str:
-    os.makedirs(os.path.dirname(ORDERS_PATH), exist_ok=True)
-    return ORDERS_PATH
-
-
-def load_orders() -> list[dict]:
-    path = orders_path()
-    if not os.path.exists(path):
-        return []
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if isinstance(data, dict):
-        data = data.get("orders", [])
-    if not isinstance(data, list):
-        return []
-    return [order for order in data if isinstance(order, dict)]
-
-
-def save_orders(orders: list[dict]):
-    with open(orders_path(), "w", encoding="utf-8") as f:
-        json.dump(orders, f, ensure_ascii=False, indent=2, sort_keys=True)
+load_servers = _db.load_servers
+save_servers = _db.save_servers
+load_local_server_settings = _db.load_local_server_settings
+save_local_server_settings = _db.save_local_server_settings
+load_orders = _db.load_orders
+save_orders = _db.save_orders
 
 
 def normalize_panel_url(value: str) -> str:
@@ -556,6 +474,8 @@ def create_client_local(name: str, term: str, contact: str) -> dict:
     server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
     cfg = f"# Client ID: {client_id}\n" + client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
     store_client_export(public_key, name, cfg)
+    _db.write_audit_log("client.create", "client", public_key, {"name": name, "clientId": client_id, "contact": contact.strip()})
+    _wh.send("client.created", {"name": name, "publicKey": public_key, "clientId": client_id, "contact": contact.strip(), "expiresAt": expires_at})
     return {"name": name, "publicKey": public_key, "clientId": client_id,
             "contact": contact.strip(), "address": f"{ip}/32", "expiresAt": expires_at, "createdAt": created_at, "config": cfg}
 
@@ -809,6 +729,9 @@ def enforce_expired_clients() -> list[dict]:
                 peer["status"] = "not_renewed"
                 peer["reason"] = "subscription_expired"
                 peer["blockedAt"] = previous.get("blockedAt") or date.today().isoformat()
+                if public_key not in expired:
+                    _db.write_audit_log("client.expire", "client", public_key, {"name": peer.get("name", ""), "expiresAt": peer.get("expiresAt", "")})
+                    _wh.send("client.expired", {"publicKey": public_key, "name": peer.get("name", ""), "expiresAt": peer.get("expiresAt", "")})
                 expired[public_key] = peer
                 changed = True
                 continue
@@ -1172,6 +1095,7 @@ def create_server(body: ServerCreate, authorization: str | None = Header(None), 
         servers = load_servers()
         servers.append(server)
         save_servers(servers)
+        _db.write_audit_log("server.create", "server", server["id"], {"name": name, "baseUrl": base_url})
         return {"server": {**server_identity(server), "kind": "remote", "status": probe_panel(server)}}
 
 
@@ -1209,6 +1133,7 @@ def update_server(server_id: str, body: ServerUpdate, authorization: str | None 
                 raise HTTPException(400, "Server URL is required")
             servers[index] = updated
             save_servers(servers)
+            _db.write_audit_log("server.update", "server", server_id, {"name": updated.get("name", "")})
             return {"server": {**server_identity(updated), "kind": "remote", "status": probe_panel(updated)}}
         raise HTTPException(404, "Server not found")
 
@@ -1224,6 +1149,7 @@ def delete_server(server_id: str, authorization: str | None = Header(None), awg_
         if len(next_servers) == len(servers):
             raise HTTPException(404, "Server not found")
         save_servers(next_servers)
+        _db.write_audit_log("server.delete", "server", server_id, {})
         return {"ok": True}
 
 
@@ -1257,6 +1183,11 @@ def create_order(body: OrderCreate):
         orders = load_orders()
         orders.insert(0, order)
         save_orders(orders)
+        _db.write_audit_log("order.create", "order", order["id"], {"login": login, "email": email, "status": order.get("status", "")})
+        if order.get("status") == "issued":
+            _wh.send("order.issued", {"orderId": order["id"], "login": login, "email": email, "clientId": order.get("clientId", ""), "serverId": order.get("serverId", "")})
+        else:
+            _wh.send("order.created", {"orderId": order["id"], "login": login, "email": email, "status": order.get("status", "")})
         return {"order": order}
 
 
@@ -1277,6 +1208,9 @@ def process_order_endpoint(
             updated = process_order_internal(order)
             orders[index] = updated
             save_orders(orders)
+            _db.write_audit_log("order.process", "order", order_id, {"status": updated.get("status", "")})
+            if updated.get("status") == "issued":
+                _wh.send("order.issued", {"orderId": order_id, "clientId": updated.get("clientId", ""), "serverId": updated.get("serverId", "")})
             return {"order": updated}
         raise HTTPException(404, "Order not found")
 
@@ -1306,6 +1240,7 @@ def delete_order(order_id: str, authorization: str | None = Header(None), awg_pa
         if len(next_orders) == len(orders):
             raise HTTPException(404, "Order not found")
         save_orders(next_orders)
+        _db.write_audit_log("order.delete", "order", order_id, {})
         return {"ok": True}
 
 
@@ -1385,6 +1320,8 @@ AllowedIPs = {ip}/32
         server_public = awg(["pubkey"], input_text=interface["PrivateKey"])
         cfg = f"# Client ID: {client_id}\n" + client_config(private_key, ip, server_public, {"PresharedKey": psk}, interface)
         store_client_export(public_key, name, cfg)
+        _db.write_audit_log("client.create", "client", public_key, {"name": name, "clientId": client_id, "contact": body.contact.strip()})
+        _wh.send("client.created", {"name": name, "publicKey": public_key, "clientId": client_id, "contact": body.contact.strip(), "expiresAt": expires_at})
         return {
             "name": name,
             "publicKey": public_key,
@@ -1425,6 +1362,8 @@ def import_client(
         meta[public_key] = entry
         save_clients_meta(meta)
         store_client_export(public_key, name, config_text)
+        _db.write_audit_log("client.import", "client", public_key, {"name": name, "contact": entry.get("contact", "")})
+        _wh.send("client.imported", {"name": name, "publicKey": public_key, "contact": entry.get("contact", "")})
         return {
             "name": name,
             "publicKey": public_key,
@@ -1488,6 +1427,8 @@ def delete_client_by_key(public_key: str, server_id: str | None = None):
         if found:
             reload_async()
             __import__('threading').Thread(target=_process_pending_orders_bg, daemon=True).start()
+        _db.write_audit_log("client.delete", "client", target_key, {"name": removed_name or (expired_removed or {}).get("name", "")})
+        _wh.send("client.deleted", {"publicKey": target_key, "name": removed_name or (expired_removed or {}).get("name", "")})
         return {"ok": True}
 
 
@@ -1528,6 +1469,7 @@ def update_client_by_key(public_key: str, body: ClientUpdate, server_id: str | N
             meta[target] = entry
             save_clients_meta(meta)
             result["contact"] = body.contact.strip()
+            _db.write_audit_log("client.update_contact", "client", target, {"contact": body.contact.strip()})
 
         if body.name is None:
             return result
@@ -1551,6 +1493,7 @@ def update_client_by_key(public_key: str, body: ClientUpdate, server_id: str | N
         write_cfg(next_text)
         rename_stored_client_export(target, old_name, new_name)
         reload_async()
+        _db.write_audit_log("client.rename", "client", target, {"oldName": old_name, "newName": new_name})
         return {**result, "name": new_name}
 
 
@@ -1596,18 +1539,11 @@ def client_config_export(
 
 
 # ─── Renew expired client ─────────────────────────────────────────────────────
-@app.post("/api/clients/{public_key}/renew")
-def renew_client(
-    public_key: str,
-    body: ClientRenew,
-    authorization: str | None = Header(None),
-    awg_panel_session: str | None = Cookie(None),
-    server_id: str | None = Query(None),
-):
-    auth(authorization, awg_panel_session)
+def _renew_client_logic(public_key: str, body: ClientRenew, server_id: str | None):
     server = get_server(server_id)
     if server is not None:
-        return panel_json(server, "POST", f"/clients/{quote(public_key.strip(), safe='')}/renew", payload=body.model_dump())
+        pk_enc = quote(public_key.strip(), safe="")
+        return panel_json(server, "POST", f"/clients/renew?public_key={pk_enc}", payload=body.model_dump())
     with data_lock:
         target = public_key.strip()
         expired = load_expired_clients()
@@ -1630,7 +1566,33 @@ def renew_client(
         del expired[target]
         save_expired_clients(expired)
         reload_async()
+        _db.write_audit_log("client.renew", "client", target, {"name": client.get("name", ""), "term": body.term, "expiresAt": new_expiry})
+        _wh.send("client.renewed", {"publicKey": target, "name": client.get("name", ""), "term": body.term, "expiresAt": new_expiry})
         return {"ok": True, "publicKey": target, "expiresAt": new_expiry, "name": client.get("name", "")}
+
+
+@app.post("/api/clients/renew")
+def renew_client_query(
+    body: ClientRenew,
+    public_key: str = Query(...),
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    return _renew_client_logic(public_key, body, server_id)
+
+
+@app.post("/api/clients/{public_key}/renew")
+def renew_client(
+    public_key: str,
+    body: ClientRenew,
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    return _renew_client_logic(public_key, body, server_id)
 
 
 # ─── Update client expiry ────────────────────────────────────────────────────
@@ -1676,17 +1638,35 @@ def update_client_expiry(
             raise HTTPException(404, "Client not found in active config")
         write_cfg("\n".join(next_chunks))
         reload_async()
+        _db.write_audit_log("client.update_expiry", "client", target, {"expiresAt": new_expiry})
         return {"ok": True, "publicKey": target, "expiresAt": new_expiry}
 
 
 # ─── Client portal (public, no auth) ─────────────────────────────────────────
+
+def _find_pk_by_client_id(cid: str) -> str | None:
+    """Return public key for the given client ID, searching meta → active peers → expired."""
+    meta = load_clients_meta()
+    pk = next((key for key, m in meta.items() if m.get("id", "") == cid), None)
+    if pk:
+        return pk
+    # Fallback: search active peers in WG config (old clients may not be in meta)
+    for peer in parse_peers(read_cfg()):
+        if peer.get("clientId", "") == cid:
+            return peer.get("PublicKey", "").strip() or None
+    # Fallback: search expired clients
+    for epk, exp in load_expired_clients().items():
+        if exp.get("clientId", "") == cid:
+            return epk
+    return None
+
+
 @app.get("/api/portal/lookup-by-id")
 def portal_lookup_by_id(client_id: str = Query(...)):
     cid = client_id.strip()
     if not cid:
         raise HTTPException(400, "Client ID is required")
-    meta = load_clients_meta()
-    pk = next((key for key, m in meta.items() if m.get("id", "") == cid), None)
+    pk = _find_pk_by_client_id(cid)
     if not pk:
         return {"client": None}
     peers_by_key = {p.get("PublicKey", "").strip(): p for p in parse_peers(read_cfg())}
@@ -1717,8 +1697,7 @@ def portal_config_by_id(client_id: str = Query(...)):
     cid = client_id.strip()
     if not cid:
         raise HTTPException(400, "Client ID is required")
-    meta = load_clients_meta()
-    pk = next((key for key, m in meta.items() if m.get("id", "") == cid), None)
+    pk = _find_pk_by_client_id(cid)
     if not pk:
         raise HTTPException(404, "Client not found")
     cfg = load_client_export(pk)
@@ -1779,3 +1758,73 @@ def portal_config_download(contact: str = Query(...), client_id: str = Query(...
     if not cfg:
         raise HTTPException(404, "Config not available. Contact your administrator.")
     return Response(content=cfg, media_type="text/plain; charset=utf-8")
+
+
+# ─── CSV export ───────────────────────────────────────────────────────────────
+
+@app.get("/api/clients/export.csv")
+def export_clients_csv(
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    server_id: str | None = Query(None),
+):
+    auth(authorization, awg_panel_session)
+    if server_id == "all":
+        payload = aggregate_clients_payload()
+    else:
+        server = get_server(server_id)
+        payload = remote_clients_payload(server) if server is not None else local_clients_payload()
+    clients = payload.get("clients", [])
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=["name", "clientId", "contact", "address", "status",
+                    "createdAt", "expiresAt", "publicKey", "serverName"],
+        extrasaction="ignore",
+    )
+    writer.writeheader()
+    for c in clients:
+        writer.writerow({
+            "name": c.get("name", ""),
+            "clientId": c.get("clientId", ""),
+            "contact": c.get("contact", ""),
+            "address": c.get("AllowedIPs", ""),
+            "status": "expired" if c.get("blocked") else "active",
+            "createdAt": c.get("createdAt", ""),
+            "expiresAt": c.get("expiresAt", ""),
+            "publicKey": c.get("PublicKey", ""),
+            "serverName": c.get("serverName", ""),
+        })
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=clients.csv"},
+    )
+
+
+# ─── Audit log ────────────────────────────────────────────────────────────────
+
+@app.get("/api/audit-log")
+def get_audit_log(
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    auth(authorization, awg_panel_session)
+    return {
+        "entries": _db.load_audit_log(limit, offset),
+        "total": _db.count_audit_log(),
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.delete("/api/audit-log")
+def clear_audit_log_endpoint(
+    authorization: str | None = Header(None),
+    awg_panel_session: str | None = Cookie(None),
+):
+    auth(authorization, awg_panel_session)
+    _db.clear_audit_log()
+    return {"ok": True}
